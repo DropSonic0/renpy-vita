@@ -22,6 +22,7 @@ OFILES		:= $(CFILES:.c=.o)
 # Include paths
 # PSL1GHT environment typically uses PORTLIBS for cross-compiled libs
 INCLUDES	:= -I$(PORTLIBS)/include/python2.7 \
+			   -I$(PORTLIBS)/include/SDL2 \
 			   -I$(PORTLIBS)/include/SDL \
 			   -I$(PORTLIBS)/include/freetype2 \
 			   -I$(PORTLIBS)/include \
