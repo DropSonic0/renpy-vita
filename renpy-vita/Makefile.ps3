@@ -21,18 +21,17 @@ OFILES		:= $(CFILES:.c=.o)
 
 # Include paths
 # PSL1GHT environment typically uses PORTLIBS for cross-compiled libs
-# Note: SDL2 is included before SDL to ensure SDL2 headers are used for core types,
-# while still allowing extension headers (like SDL_image.h) to be found in the SDL directory.
-INCLUDES	:= -I$(PORTLIBS)/include/python2.7 \
-			   -I$(PORTLIBS)/include/SDL2 \
-			   -I$(PORTLIBS)/include/SDL \
-			   -I$(PORTLIBS)/include/freetype2 \
-			   -I$(PORTLIBS)/include \
-			   -I$(CURDIR)/include \
+# Local includes are placed first to prefer bundled headers (like SDL_gfxPrimitives.h)
+# followed by SDL2 to ensure SDL2 is used for all core SDL functionality.
+INCLUDES	:= -I$(CURDIR)/include \
 			   -I$(CURDIR)/include/module \
 			   -I$(CURDIR)/include/module/src \
 			   -I$(CURDIR)/include/module/fribidi-src/lib \
 			   -I$(CURDIR)/../renpy/module/fribidi-src/lib \
+			   -I$(PORTLIBS)/include/python2.7 \
+			   -I$(PORTLIBS)/include/SDL2 \
+			   -I$(PORTLIBS)/include/freetype2 \
+			   -I$(PORTLIBS)/include \
 			   $(LIBPSL1GHT_INC)
 
 # Compiler flags
