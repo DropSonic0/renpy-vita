@@ -22,7 +22,7 @@ OFILES		:= $(CFILES:.c=.o)
 # Include paths
 # PSL1GHT environment typically uses PORTLIBS for cross-compiled libs
 INCLUDES	:= -I$(PORTLIBS)/include/python2.7 \
-			   -I$(PORTLIBS)/include/SDL2 \
+			   -I$(PORTLIBS)/include/SDL \
 			   -I$(PORTLIBS)/include/freetype2 \
 			   -I$(PORTLIBS)/include \
 			   -I$(CURDIR)/include \
@@ -41,7 +41,7 @@ LIBPATHS	:= -L$(PORTLIBS)/lib $(LIBPSL1GHT_LIB)
 
 # Libraries
 # Added essential PS3 and RenPy dependencies
-LIBS		:= -lpython2.7 -lSDL2_image -lSDL2_mixer -lSDL2 -lfreetype -lpng -ljpeg -lz -lm -lrt -lv2 -lsysutil -lsysmodule -lnet -lbt -lrsx -lgcm_sys
+LIBS		:= -lpython2.7 -lSDL_image -lSDL_mixer -lSDL2 -lfreetype -lpng -ljpeg -lz -lm -lrt -lv2 -lsysutil -lsysmodule -lnet -lbt -lrsx -lgcm_sys
 
 .PHONY: all clean
 
