@@ -295,7 +295,7 @@ int main(int argc, char* argv[])
     int found_sysconfigdata = 0;
     int found_renpy = 0;
 
-    for (int i = 0; i < sizeof(dir_paths); i += 1)
+    for (int i = 0; i < sizeof(dir_paths) / sizeof(char*); i += 1)
     {
         if (dir_paths[i] == NULL)
         {
