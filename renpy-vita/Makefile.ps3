@@ -36,7 +36,8 @@ INCLUDES	:= -I$(CURDIR)/include \
 
 # Compiler flags
 # Added -D__PS3__ and used flags from your example
-CFLAGS		+= -O2 -Wall -D__PS3__ -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDES)
+# -DIMG_INIT_WEBP=0 is added because some PS3 portlibs lack WebP support in SDL_image
+CFLAGS		+= -O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDES)
 
 # Library paths
 LIBPATHS	:= -L$(PORTLIBS)/lib $(LIBPSL1GHT_LIB)
