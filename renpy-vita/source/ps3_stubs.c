@@ -14,15 +14,6 @@ int symlink(const char *path1, const char *path2) { errno = EROFS; return -1; }
 int fdatasync(int fildes) { return 0; }
 char *ttyname(int fd) { return NULL; }
 
-char *getcwd(char *buf, size_t size) {
-    if (buf && size > 1) {
-        buf[0] = '/';
-        buf[1] = '\0';
-        return buf;
-    }
-    return NULL;
-}
-
 /* Stubs for popen/pclose if not available in PSL1GHT */
 FILE *popen(const char *command, const char *type) { return NULL; }
 int pclose(FILE *stream) { return -1; }
@@ -42,9 +33,3 @@ void* IMG_LoadTexture_RW(void* renderer, void* src, int freesrc) {
     fprintf(stderr, "ERROR: IMG_LoadTexture_RW called but not implemented (SDL_image 1.2 incompatibility)\n");
     return NULL;
 }
-
-int IMG_Init(int flags) {
-    return flags;
-}
-
-void IMG_Quit() { }
