@@ -123,6 +123,11 @@ void show_error_and_exit(const char* message)
 
 int main(int argc, char* argv[])
 {
+#ifdef __PS3__
+    printf("Ren'Py PS3: Initializing...\n");
+    fflush(stdout);
+#endif
+
 #ifdef __psp2__
     PVRSRV_PSP2_APPHINT hint;
     SceUID fd = -1;
@@ -205,8 +210,12 @@ int main(int argc, char* argv[])
 #ifdef __PS3__
     /* PS3 Paths */
     strncpy(title_id, "RENPY0001", sizeof(title_id));
+    title_id[sizeof(title_id)-1] = '\0';
     snprintf(app_dir_path, sizeof(app_dir_path), "/dev_hdd0/game/%s/USRDIR", title_id);
     snprintf(app_program_path, sizeof(app_program_path), "%s/EBOOT.BIN", app_dir_path);
+
+    printf("Ren'Py PS3: App dir path: %s\n", app_dir_path);
+    fflush(stdout);
 
     /* Initialize PS3 stuff if needed */
     Py_SetProgramName(app_program_path);
@@ -284,11 +293,20 @@ int main(int argc, char* argv[])
         {NULL, NULL}
     };
 
+#ifdef __PS3__
+    /* getcwd might not be available or reliable on PS3 */
+    memset(relative_dir_path, 0, sizeof(relative_dir_path));
+    printf("Ren'Py PS3: Searching for data files...\n");
+    fflush(stdout);
+#else
     getcwd(relative_dir_path, sizeof(relative_dir_path));
+#endif
 
     char* dir_paths[] = {
         app_dir_path,
+#ifndef __PS3__
         relative_dir_path,
+#endif
         NULL,
     };
 
@@ -301,10 +319,18 @@ int main(int argc, char* argv[])
         {
             break;
         }
+        if (strlen(dir_paths[i]) == 0)
+        {
+            continue;
+        }
+        printf("Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
+        fflush(stdout);
+
         snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s/lib/python27.zip", dir_paths[i]);
         FILE* sysconfigdata_file = fopen((const char*)sysconfigdata_file_path, "rb");
         if (sysconfigdata_file != NULL)
         {
+            printf("Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
             found_sysconfigdata = 1;
             fclose(sysconfigdata_file);
         }
@@ -313,6 +339,7 @@ int main(int argc, char* argv[])
         FILE* renpy_file = fopen((const char*)python_script_buffer, "rb");
         if (renpy_file != NULL)
         {
+            printf("Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
             found_renpy = 1;
             fclose(renpy_file);
         }
@@ -321,7 +348,9 @@ int main(int argc, char* argv[])
         {
             snprintf(python_home_buffer, sizeof(python_home_buffer), "%s/lib/python27.zip", dir_paths[i]);
             snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s/lib/python27.zip']", dir_paths[i]);
+            printf("Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
             Py_SetPythonHome(python_home_buffer);
+            fflush(stdout);
             break;
         }
     }
@@ -336,8 +365,12 @@ int main(int argc, char* argv[])
         show_error_and_exit("Could not find renpy.py.\n");
     }
 
+    printf("Ren'Py PS3: Initializing Python...\n");
+    fflush(stdout);
     Py_InitializeEx(0);
 
+    printf("Ren'Py PS3: Extending Inittab...\n");
+    fflush(stdout);
     PyImport_ExtendInittab(builtins);
 
     PyObject *pmodule;
