@@ -112,18 +112,32 @@ SceUID pid = -1;
 #ifdef __PS3__
 typedef int SceUID;
 int pid = -1;
+FILE *ps3_log_fp = NULL;
 #endif
 
 void show_error_and_exit(const char* message)
 {
     Py_Finalize();
     printf("%s", message);
+#ifdef __PS3__
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "ERROR: %s", message);
+        fflush(ps3_log_fp);
+        fclose(ps3_log_fp);
+    }
+#endif
     Py_Exit(1);
 }
 
 int main(int argc, char* argv[])
 {
 #ifdef __PS3__
+    /* Try to create log file as early as possible */
+    ps3_log_fp = fopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w");
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Main started\n");
+        fflush(ps3_log_fp);
+    }
     printf("Ren'Py PS3: Initializing...\n");
     fflush(stdout);
 #endif
@@ -216,6 +230,10 @@ int main(int argc, char* argv[])
 
     printf("Ren'Py PS3: App dir path: %s\n", app_dir_path);
     fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: App dir path: %s\n", app_dir_path);
+        fflush(ps3_log_fp);
+    }
 
     /* Initialize PS3 stuff if needed */
     Py_SetProgramName(app_program_path);
@@ -325,6 +343,10 @@ int main(int argc, char* argv[])
         }
         printf("Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
         fflush(stdout);
+        if (ps3_log_fp) {
+            fprintf(ps3_log_fp, "Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
+            fflush(ps3_log_fp);
+        }
 
         snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s/lib/python27.zip", dir_paths[i]);
         FILE* sysconfigdata_file = fopen((const char*)sysconfigdata_file_path, "rb");
@@ -333,6 +355,10 @@ int main(int argc, char* argv[])
             printf("Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
             found_sysconfigdata = 1;
             fclose(sysconfigdata_file);
+            if (ps3_log_fp) {
+                fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
+                fflush(ps3_log_fp);
+            }
         }
 
         snprintf(python_script_buffer, sizeof(python_script_buffer), "%s/renpy.py", dir_paths[i]);
@@ -342,6 +368,10 @@ int main(int argc, char* argv[])
             printf("Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
             found_renpy = 1;
             fclose(renpy_file);
+            if (ps3_log_fp) {
+                fprintf(ps3_log_fp, "Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
+                fflush(ps3_log_fp);
+            }
         }
 
         if (found_sysconfigdata == 1 && found_renpy == 1)
@@ -351,6 +381,10 @@ int main(int argc, char* argv[])
             printf("Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
             Py_SetPythonHome(python_home_buffer);
             fflush(stdout);
+            if (ps3_log_fp) {
+                fprintf(ps3_log_fp, "Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
+                fflush(ps3_log_fp);
+            }
             break;
         }
     }
@@ -367,10 +401,18 @@ int main(int argc, char* argv[])
 
     printf("Ren'Py PS3: Initializing Python...\n");
     fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python...\n");
+        fflush(ps3_log_fp);
+    }
     Py_InitializeEx(0);
 
     printf("Ren'Py PS3: Extending Inittab...\n");
     fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Extending Inittab...\n");
+        fflush(ps3_log_fp);
+    }
     PyImport_ExtendInittab(builtins);
 
     PyObject *pmodule;
@@ -414,6 +456,12 @@ int main(int argc, char* argv[])
     else
     {
         /* This is where the fun begins */
+        printf("Ren'Py PS3: Running renpy.py...\n");
+        fflush(stdout);
+        if (ps3_log_fp) {
+            fprintf(ps3_log_fp, "Ren'Py PS3: Running renpy.py...\n");
+            fflush(ps3_log_fp);
+        }
         python_result = PyRun_SimpleFileEx(renpy_file, (const char*)python_script_buffer, 1);
     }
 
@@ -422,6 +470,11 @@ int main(int argc, char* argv[])
         show_error_and_exit("An uncaught Python exception occurred during renpy.py execution.\n\nPlease look in the \"Ren'Py Logs\" folder on the SD card root for more information about this exception.");
     }
 
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Execution finished with result %d\n", python_result);
+        fflush(ps3_log_fp);
+        fclose(ps3_log_fp);
+    }
     Py_Exit(0);
     return 0;
 }
