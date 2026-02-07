@@ -45,7 +45,8 @@ LIBPATHS	:= -L$(PORTLIBS)/lib $(LIBPSL1GHT_LIB)
 # Libraries
 # Added essential PS3 and RenPy dependencies
 # Note: -llv2 is used for liblv2.a, and -lbt is removed as it's not present in all PSL1GHT versions.
-LIBS		:= -lpython2.7 -lSDL_image -lSDL_mixer -lSDL2 -lfreetype -lpng -ljpeg -lz -lm -lrt -llv2 -lsysutil -lsysmodule -lnet -lrsx -lgcm_sys
+# -laudio, -lio, -ltiff are added to resolve SDL2 and SDL_image dependencies.
+LIBS		:= -lpython2.7 -lSDL_image -lSDL_mixer -lSDL2 -lfreetype -lpng -ljpeg -ltiff -lz -lm -lrt -llv2 -laudio -lio -lsysutil -lsysmodule -lnet -lrsx -lgcm_sys
 
 .PHONY: all clean
 
