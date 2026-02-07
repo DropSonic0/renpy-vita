@@ -21,6 +21,8 @@ OFILES		:= $(CFILES:.c=.o)
 
 # Include paths
 # PSL1GHT environment typically uses PORTLIBS for cross-compiled libs
+# Note: SDL2 is included before SDL to ensure SDL2 headers are used for core types,
+# while still allowing extension headers (like SDL_image.h) to be found in the SDL directory.
 INCLUDES	:= -I$(PORTLIBS)/include/python2.7 \
 			   -I$(PORTLIBS)/include/SDL2 \
 			   -I$(PORTLIBS)/include/SDL \
