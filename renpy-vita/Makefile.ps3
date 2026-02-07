@@ -1,0 +1,34 @@
+ifeq ($(strip $(PS3DEV)),)
+$(error "Please set PS3DEV in your environment. export PS3DEV=/usr/local/ps3dev")
+endif
+
+include $(PS3DEV)/ppu/Makefile.base
+
+TARGET		:= renpy_ps3
+TITLE_ID	:= RENPY0001
+CONTENT_ID	:= UP0001-$(TITLE_ID)_00-0000000000000000
+
+SOURCE		:= source
+OBJS		:= $(SOURCE)/main.o $(SOURCE)/ps3_stubs.o
+
+# Add Ren'Py module objects here after compiling them with Cython/ppu-gcc
+# For now, let's start with the main executable
+
+INCLUDES	+= -I$(PS3DEV)/portlibs/ppu/include/python2.7
+INCLUDES	+= -I$(PS3DEV)/portlibs/ppu/include/SDL2
+INCLUDES	+= -I$(PS3DEV)/portlibs/ppu/include
+INCLUDES	+= -Iinclude -Iinclude/module
+
+CFLAGS		+= -D__PS3__ -O2 -Wall
+
+LIBS		:= -lpython2.7 -lSDL2_image -lSDL2_mixer -lSDL2 -lfreetype -lpng -ljpeg -lz -lm -lrt -lv2 -lsysutil -lsysmodule -lnet -lbt -lrsx -lgcm_sys
+
+LIBPATHS	+= -L$(PS3DEV)/portlibs/ppu/lib -L$(PS3DEV)/ppu/lib
+
+all: $(TARGET).elf
+
+$(TARGET).elf: $(OBJS)
+	$(PPU_CC) $(OBJS) $(LIBPATHS) $(LIBS) -o $@
+
+clean:
+	rm -f $(OBJS) $(TARGET).elf

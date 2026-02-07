@@ -2,6 +2,8 @@
 #include <string.h>
 #include <Python.h>
 #include <SDL2/SDL.h>
+
+#ifdef __psp2__
 #include <psp2/sysmodule.h>
 #include <psp2/power.h>
 #include <psp2/appmgr.h>
@@ -10,10 +12,17 @@
 #include <psp2/vshbridge.h> 
 #include <gpu_es4/psp2_pvr_hint.h>
 
-#define MAX_PATH 256
-
 int _newlib_heap_size_user = 180 * 1024 * 1024;
 unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
+#endif
+
+#ifdef __PS3__
+#include <sys/process.h>
+#include <sys/memory.h>
+#include <sysutil/sysutil.h>
+#endif
+
+#define MAX_PATH 256
 
 PyMODINIT_FUNC initpygame_sdl2_color();
 PyMODINIT_FUNC initpygame_sdl2_controller();
@@ -107,16 +116,19 @@ void show_error_and_exit(const char* message)
 
 int main(int argc, char* argv[])
 {
+#ifdef __psp2__
     PVRSRV_PSP2_APPHINT hint;
     SceUID fd = -1;
     SceBool override = SCE_FALSE;
     char target_path[MAX_PATH];
+#endif
 
     Py_NoSiteFlag = 1;
     Py_IgnoreEnvironmentFlag = 1;
     Py_NoUserSiteDirectory = 1;
     Py_OptimizeFlag = 2;
 
+#ifdef __psp2__
     /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
     scePowerSetArmClockFrequency(444);
     /* Ren'Py requires full RW access */
@@ -181,6 +193,17 @@ int main(int argc, char* argv[])
 
     /* Now let's start the Ren'Py Process */
     Py_SetProgramName(app_program_path);
+#endif
+
+#ifdef __PS3__
+    /* PS3 Paths */
+    strncpy(title_id, "RENPY0001", sizeof(title_id));
+    snprintf(app_dir_path, sizeof(app_dir_path), "/dev_hdd0/game/%s/USRDIR", title_id);
+    snprintf(app_program_path, sizeof(app_program_path), "%s/EBOOT.BIN", app_dir_path);
+
+    /* Initialize PS3 stuff if needed */
+    Py_SetProgramName(app_program_path);
+#endif
 
     static struct _inittab builtins[] = {
 
