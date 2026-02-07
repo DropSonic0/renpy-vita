@@ -1,0 +1,54 @@
+.SUFFIXES:
+
+ifeq ($(strip $(PSL1GHT)),)
+$(error "Please set PSL1GHT in your environment. export PSL1GHT=<path>")
+endif
+
+include $(PSL1GHT)/ppu_rules
+
+TARGET		:= renpy_ps3
+APPID		:= RENPY0001
+CONTENTID	:= UP0001-$(APPID)_00-0000000000000000
+
+# Directories
+SOURCE_DIR	:= source
+MODULE_DIR	:= source/module
+
+# Source files
+# We include main.c, ps3_stubs.c and all generated module .c files
+CFILES		:= source/main.c source/ps3_stubs.c $(wildcard source/module/*.c)
+OFILES		:= $(CFILES:.c=.o)
+
+# Include paths
+# PSL1GHT environment typically uses PORTLIBS for cross-compiled libs
+INCLUDES	:= -I$(PORTLIBS)/include/python2.7 \
+			   -I$(PORTLIBS)/include/SDL2 \
+			   -I$(PORTLIBS)/include/freetype2 \
+			   -I$(PORTLIBS)/include \
+			   -I$(CURDIR)/include \
+			   -I$(CURDIR)/include/module \
+			   -I$(CURDIR)/include/module/src \
+			   -I$(CURDIR)/include/module/fribidi-src/lib \
+			   -I$(CURDIR)/../renpy/module/fribidi-src/lib \
+			   $(LIBPSL1GHT_INC)
+
+# Compiler flags
+# Added -D__PS3__ and used flags from your example
+CFLAGS		+= -O2 -Wall -D__PS3__ -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDES)
+
+# Library paths
+LIBPATHS	:= -L$(PORTLIBS)/lib $(LIBPSL1GHT_LIB)
+
+# Libraries
+# Added essential PS3 and RenPy dependencies
+LIBS		:= -lpython2.7 -lSDL2_image -lSDL2_mixer -lSDL2 -lfreetype -lpng -ljpeg -lz -lm -lrt -lv2 -lsysutil -lsysmodule -lnet -lbt -lrsx -lgcm_sys
+
+.PHONY: all clean
+
+all: $(TARGET).elf
+
+$(TARGET).elf: $(OFILES)
+	$(CC) $(OFILES) $(LIBPATHS) $(LIBS) $(MACHDEP) -o $@
+
+clean:
+	rm -f $(OFILES) $(TARGET).elf
