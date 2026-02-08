@@ -29,7 +29,15 @@ if [ -d "$PORTLIBS/lib/python2.7" ]; then
 elif [ -d "$PORTLIBS/python/lib/python2.7" ]; then
     cp -r $PORTLIBS/python/lib/python2.7/. tmp_build_ps3/
 else
-    echo "Warning: Python 2.7 standard library not found in PORTLIBS. zip may be incomplete."
+    echo "Warning: Python 2.7 standard library not found in PORTLIBS."
+    HOST_PY2_LIB=$(python2 -c "import os; print(os.path.dirname(os.__file__))" 2>/dev/null)
+    if [ -n "$HOST_PY2_LIB" ]; then
+        echo "Attempting to use host Python 2 library from $HOST_PY2_LIB"
+        cp -r "$HOST_PY2_LIB/." tmp_build_ps3/
+    else
+        echo "Error: Could not find Python 2.7 standard library."
+        echo "Please install python2.7 on your host or provide the path to the library."
+    fi
 fi
 
 rm -rf tmp_build_ps3/test
