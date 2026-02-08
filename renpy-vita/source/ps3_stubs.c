@@ -75,7 +75,11 @@ static void wrap_log(const char* fmt, ...) {
 
 void* __wrap_malloc(size_t size) {
     void* res = __real_malloc(size);
-    wrap_log("WRAP: malloc(%zu) = %p\n", size, res);
+    /* Only log large or every Nth malloc to avoid "loop" clutter */
+    static int mcount = 0;
+    if (size > 1024 * 10 || mcount++ % 100 == 0) {
+        wrap_log("WRAP: malloc(%zu) = %p\n", size, res);
+    }
     return res;
 }
 
@@ -92,7 +96,7 @@ void* __wrap_calloc(size_t nmemb, size_t size) {
 }
 
 void __wrap_free(void* ptr) {
-    if (ptr) wrap_log("WRAP: free(%p)\n", ptr);
+    /* Don't log free to reduce spam */
     __real_free(ptr);
 }
 
@@ -118,7 +122,6 @@ int __wrap_open(const char *pathname, int flags, ...) {
 
 ssize_t __wrap_read(int fd, void *buf, size_t count) {
     if (fd == DUMMY_URANDOM_FD) {
-        wrap_log("WRAP: read(DUMMY_URANDOM, count=%zu)\n", count);
         memset(buf, 0x42, count); // Dummy predictable data
         return count;
     }
@@ -137,9 +140,9 @@ ssize_t __wrap_write(int fd, const void *buf, size_t count) {
         char prefix[32];
         snprintf(prefix, 32, "PYTHON-OUT[%d]: ", fd);
         __real_write(1, prefix, strlen(prefix));
-        __real_write(1, buf, count);
+        ssize_t res = __real_write(1, buf, count);
         wrap_log("WRAP: write(%d, count=%zu)\n", fd, count);
-        return count;
+        return res;
     }
 
     return __real_write(fd, buf, count);
@@ -153,18 +156,23 @@ int __wrap_stat(const char *path, struct stat *buf) {
 int __wrap_fstat(int fd, struct stat *buf) {
     wrap_log("WRAP: fstat(%d)\n", fd);
     int res = __real_fstat(fd, buf);
-    /* For standard fds, ensure they look like chars if possible */
+    /* For standard fds, ensure they look like valid char devices */
     if (fd >= 0 && fd <= 2) {
         if (res != 0) {
-            if (buf) { memset(buf, 0, sizeof(struct stat)); buf->st_mode = S_IFCHR; }
+            if (buf) {
+                memset(buf, 0, sizeof(struct stat));
+                buf->st_mode = S_IFCHR | 0666;
+                buf->st_nlink = 1;
+            }
             return 0;
         }
-        if (buf) buf->st_mode |= S_IFCHR;
+        if (buf) buf->st_mode = S_IFCHR | (buf->st_mode & 0777);
     }
     return res;
 }
 
 off_t __wrap_lseek(int fd, off_t offset, int whence) {
+    if (fd == DUMMY_URANDOM_FD) return 0;
     wrap_log("WRAP: lseek(%d, %ld, %d)\n", fd, (long)offset, whence);
     return __real_lseek(fd, offset, whence);
 }
@@ -185,7 +193,8 @@ int __wrap_access(const char *pathname, int mode) {
 
 int __wrap_isatty(int fd) {
     wrap_log("WRAP: isatty(%d)\n", fd);
-    return 0; /* Say no to TTY to avoid complex terminal code */
+    if (fd >= 0 && fd <= 2) return 1; /* Pretend they are TTYs to avoid complex buffering */
+    return 0;
 }
 
 char* __wrap_getenv(const char *name) {
@@ -216,7 +225,6 @@ void* __wrap_sbrk(intptr_t increment) {
 }
 
 int __wrap_gettimeofday(struct timeval *tv, void *tz) {
-    /* No log here, too frequent */
     return __real_gettimeofday(tv, tz);
 }
 
@@ -227,9 +235,7 @@ int __wrap_pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t 
 }
 
 int __wrap_pthread_mutex_lock(pthread_mutex_t *mutex) {
-    /* Only log every 1000th lock to avoid spam, or just don't log */
-    static int lcount = 0;
-    if (lcount++ % 1000 == 0) wrap_log("WRAP: pthread_mutex_lock(%p) (sampled)\n", mutex);
+    /* No log here, way too frequent */
     return __real_pthread_mutex_lock(mutex);
 }
 
@@ -270,5 +276,5 @@ int sigsuspend(const sigset_t *mask) { return 0; }
 
 /* Constructor to announce existence */
 __attribute__((constructor)) void ps3_stubs_init() {
-    log_me("Ren'Py PS3: [V21-TRACE] ps3_stubs constructor called\n");
+    log_me("Ren'Py PS3: [V22-FINAL-TRACE] ps3_stubs constructor called\n");
 }
