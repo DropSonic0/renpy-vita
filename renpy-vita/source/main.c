@@ -364,8 +364,7 @@ int main(int argc, char* argv[])
             if (stat(sysconfigdata_file_path, &st) == 0) {
                 printf("Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
                 found_sysconfigdata = 1;
-                strncpy(python_home_buffer, sysconfigdata_file_path, sizeof(python_home_buffer));
-                python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
+                /* Note: sysconfigdata_file_path now contains the full path to the zip */
                 break;
             } else {
                 printf("Ren'Py PS3: python27.zip NOT found at %s\n", sysconfigdata_file_path);
@@ -398,11 +397,11 @@ int main(int argc, char* argv[])
             Py_SetPythonHome(python_home_buffer);
             printf("Ren'Py PS3: Py_SetPythonHome done.\n");
 
-    /* Also set explicit path to ensure zip is found */
+    /* Also set explicit path via PYTHONPATH to ensure zip is found */
     char path_env[1024];
     snprintf(path_env, sizeof(path_env), "%s/lib/python27.zip:%s", python_home_buffer, python_home_buffer);
-    printf("Ren'Py PS3: Calling Py_SetPath(%s)...\n", path_env);
-    Py_SetPath(path_env);
+    printf("Ren'Py PS3: Setting PYTHONPATH to %s\n", path_env);
+    SDL_setenv("PYTHONPATH", path_env, 1);
 
             fflush(stdout);
             break;
