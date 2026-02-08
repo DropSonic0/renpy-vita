@@ -322,6 +322,9 @@ int main(int argc, char* argv[])
 
     char* dir_paths[] = {
         app_dir_path,
+#ifdef __PS3__
+        "/app_home",
+#endif
 #ifndef __PS3__
         relative_dir_path,
 #endif
@@ -348,16 +351,27 @@ int main(int argc, char* argv[])
             fflush(ps3_log_fp);
         }
 
-        snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s/lib/python27.zip", dir_paths[i]);
-        FILE* sysconfigdata_file = fopen((const char*)sysconfigdata_file_path, "rb");
-        if (sysconfigdata_file != NULL)
-        {
-            printf("Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
-            found_sysconfigdata = 1;
-            fclose(sysconfigdata_file);
-            if (ps3_log_fp) {
-                fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
-                fflush(ps3_log_fp);
+        /* Check for python27.zip in /lib/ or root */
+        const char* python_zip_subpaths[] = {"/lib/python27.zip", "/python27.zip"};
+        for (int j = 0; j < 2; j++) {
+            snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_zip_subpaths[j]);
+            FILE* f = fopen(sysconfigdata_file_path, "rb");
+            if (f) {
+                printf("Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
+                found_sysconfigdata = 1;
+                strncpy(python_home_buffer, sysconfigdata_file_path, sizeof(python_home_buffer));
+                python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
+                fclose(f);
+                if (ps3_log_fp) {
+                    fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
+                    fflush(ps3_log_fp);
+                }
+                break;
+            } else {
+                if (ps3_log_fp) {
+                    fprintf(ps3_log_fp, "Ren'Py PS3: python27.zip NOT found at %s\n", sysconfigdata_file_path);
+                    fflush(ps3_log_fp);
+                }
             }
         }
 
@@ -372,12 +386,16 @@ int main(int argc, char* argv[])
                 fprintf(ps3_log_fp, "Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
                 fflush(ps3_log_fp);
             }
+        } else {
+            if (ps3_log_fp) {
+                fprintf(ps3_log_fp, "Ren'Py PS3: renpy.py NOT found at %s\n", python_script_buffer);
+                fflush(ps3_log_fp);
+            }
         }
 
         if (found_sysconfigdata == 1 && found_renpy == 1)
         {
-            snprintf(python_home_buffer, sizeof(python_home_buffer), "%s/lib/python27.zip", dir_paths[i]);
-            snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s/lib/python27.zip']", dir_paths[i]);
+            snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s']", python_home_buffer);
             printf("Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
             Py_SetPythonHome(python_home_buffer);
             fflush(stdout);
