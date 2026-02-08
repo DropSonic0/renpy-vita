@@ -20,6 +20,9 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sys/process.h>
 #include <sys/memory.h>
 #include <sysutil/sysutil.h>
+
+/* Set process parameters: Priority 1001, 1MB stack size */
+SYS_PROCESS_PARAM(1001, 0x100000);
 #endif
 
 #define MAX_PATH 256
@@ -395,8 +398,18 @@ int main(int argc, char* argv[])
 
         if (found_sysconfigdata == 1 && found_renpy == 1)
         {
-            snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s']", python_home_buffer);
+            /* Use the directory containing python27.zip as Home, not the zip itself */
+            strncpy(python_home_buffer, dir_paths[i], sizeof(python_home_buffer));
+            python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
+
+            /* sys.path will include the zip file and the search directory */
+            snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s', '%s']", sysconfigdata_file_path, dir_paths[i]);
+
             printf("Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
+            if (ps3_log_fp) {
+                fprintf(ps3_log_fp, "Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
+                fflush(ps3_log_fp);
+            }
             Py_SetPythonHome(python_home_buffer);
             fflush(stdout);
             if (ps3_log_fp) {
@@ -417,14 +430,6 @@ int main(int argc, char* argv[])
         show_error_and_exit("Could not find renpy.py.\n");
     }
 
-    printf("Ren'Py PS3: Initializing Python...\n");
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python...\n");
-        fflush(ps3_log_fp);
-    }
-    Py_InitializeEx(0);
-
     printf("Ren'Py PS3: Extending Inittab...\n");
     fflush(stdout);
     if (ps3_log_fp) {
@@ -432,6 +437,21 @@ int main(int argc, char* argv[])
         fflush(ps3_log_fp);
     }
     PyImport_ExtendInittab(builtins);
+
+    printf("Ren'Py PS3: Initializing Python (Py_InitializeEx)...\n");
+    fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_InitializeEx)...\n");
+        fflush(ps3_log_fp);
+    }
+    Py_InitializeEx(0);
+
+    printf("Ren'Py PS3: Python Initialized.\n");
+    fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Python Initialized.\n");
+        fflush(ps3_log_fp);
+    }
 
     PyObject *pmodule;
 
