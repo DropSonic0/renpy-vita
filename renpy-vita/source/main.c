@@ -157,6 +157,7 @@ int main(int argc, char* argv[])
     Py_NoUserSiteDirectory = 1;
     Py_OptimizeFlag = 0;
     Py_VerboseFlag = 2; /* Enable verbose logging for Python init */
+    Py_HashRandomizationFlag = 0; /* Avoid hanging for entropy */
 
 #ifdef __psp2__
     /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
@@ -465,15 +466,15 @@ int main(int argc, char* argv[])
     /* Restore Inittab extension */
     PyImport_ExtendInittab(builtins);
 
-    printf("Ren'Py PS3: Initializing Python (Py_Initialize)... \n");
+    printf("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
     fflush(stdout);
     if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_Initialize)... \n");
+        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
         fflush(ps3_log_fp);
     }
 
-    /* Try Py_Initialize instead of Py_InitializeEx(0) */
-    Py_Initialize();
+    /* Use Py_InitializeEx(0) to disable signal handlers */
+    Py_InitializeEx(0);
 
     printf("Ren'Py PS3: Python Initialized!\n");
     fflush(stdout);

@@ -13,6 +13,9 @@ int execv(const char *path, char *const argv[]) { errno = ENOSYS; return -1; }
 int symlink(const char *path1, const char *path2) { errno = EROFS; return -1; }
 int fdatasync(int fildes) { return 0; }
 char *ttyname(int fd) { return NULL; }
+int readlink(const char *path, char *buf, size_t bufsiz) { errno = ENOSYS; return -1; }
+int gethostname(char *name, size_t len) { snprintf(name, len, "ps3"); return 0; }
+long sysconf(int name) { return -1; }
 
 /* Stubs for popen/pclose if not available in PSL1GHT */
 FILE *popen(const char *command, const char *type) { return NULL; }
