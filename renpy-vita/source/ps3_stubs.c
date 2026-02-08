@@ -16,6 +16,15 @@ gid_t getgid(void) { return 0; }
 uid_t geteuid(void) { return 0; }
 gid_t getegid(void) { return 0; }
 pid_t getppid(void) { return 1; }
+pid_t getpid(void) { return 100; }
+
+int kill(pid_t pid, int sig) { return 0; }
+int sigaction(int sig, const struct sigaction *act, struct sigaction *oact) { return 0; }
+int sigemptyset(sigset_t *set) { if (set) memset(set, 0, sizeof(sigset_t)); return 0; }
+int sigfillset(sigset_t *set) { if (set) memset(set, 0xFF, sizeof(sigset_t)); return 0; }
+int sigaddset(sigset_t *set, int signum) { return 0; }
+int sigdelset(sigset_t *set, int signum) { return 0; }
+int sigismember(const sigset_t *set, int signum) { return 0; }
 
 int pipe(int fildes[2]) { printf("STUB: pipe\n"); errno = ENOSYS; return -1; }
 int fork() { printf("STUB: fork\n"); errno = ENOSYS; return -1; }
@@ -40,18 +49,35 @@ int fstat(int fildes, struct stat *buf) {
     }
 
     sysFSStat lv2_st;
+    memset(&lv2_st, 0, sizeof(sysFSStat));
     s32 res = sysLv2FsFStat(fildes, &lv2_st);
+
+    // Also try to get size via Lseek as a backup/validation
+    u64 cur_pos = 0, end_pos = 0;
+    sysFsLseek(fildes, 0, 1, &cur_pos); // SEEK_CUR
+    sysFsLseek(fildes, 0, 2, &end_pos); // SEEK_END
+    sysFsLseek(fildes, (s64)cur_pos, 0, &cur_pos); // SEEK_SET
+
     if (res == 0) {
         if (buf) {
             memset(buf, 0, sizeof(struct stat));
             buf->st_mode = lv2_st.st_mode;
-            buf->st_size = lv2_st.st_size;
+            // Use lseek size if it seems more plausible than the stat result
+            buf->st_size = (end_pos > 0) ? end_pos : lv2_st.st_size;
             buf->st_atime = lv2_st.st_atime;
             buf->st_mtime = lv2_st.st_mtime;
             buf->st_ctime = lv2_st.st_ctime;
-            buf->st_blksize = lv2_st.st_blksize;
+            buf->st_blksize = 4096;
             buf->st_nlink = 1;
-            printf("fstat(%d) -> size %lld, mode %08x\n", fildes, (long long)buf->st_size, (unsigned int)buf->st_mode);
+
+            printf("fstat(%d) -> size %lld (lseek %lld), mode %08x\n",
+                fildes, (long long)lv2_st.st_size, (long long)end_pos, (unsigned int)buf->st_mode);
+
+            // Hex dump for alignment debugging
+            unsigned char *p = (unsigned char *)&lv2_st;
+            printf("fstat(%d) struct: ", fildes);
+            for(int i=0; i<sizeof(sysFSStat); i++) printf("%02x ", p[i]);
+            printf("\n");
         }
         return 0;
     }
@@ -60,8 +86,9 @@ int fstat(int fildes, struct stat *buf) {
     if (buf) {
         memset(buf, 0, sizeof(struct stat));
         buf->st_mode = 0100000 | 0666; // S_IFREG
+        buf->st_size = (off_t)end_pos;
     }
-    printf("fstat(%d) -> FALLBACK (actual error %08x)\n", fildes, (unsigned int)res);
+    printf("fstat(%d) -> FALLBACK (actual error %08x, lseek size %lld)\n", fildes, (unsigned int)res, (long long)end_pos);
     return 0;
 }
 
