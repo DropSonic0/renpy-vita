@@ -1,59 +1,132 @@
+#---------------------------------------------------------------------------------
+# Clear the implicit built in rules
+#---------------------------------------------------------------------------------
 .SUFFIXES:
-
+#---------------------------------------------------------------------------------
 ifeq ($(strip $(PSL1GHT)),)
 $(error "Please set PSL1GHT in your environment. export PSL1GHT=<path>")
 endif
 
 include $(PSL1GHT)/ppu_rules
 
-TARGET		:= renpy_ps3
-APPID		:= RENPY0001
-CONTENTID	:= UP0001-$(APPID)_00-0000000000000000
+#---------------------------------------------------------------------------------
+# TARGET is the name of the output
+# BUILD is the directory where object files & intermediate files will be placed
+# SOURCES is a list of directories containing source code
+# INCLUDES is a list of directories containing extra header files
+#---------------------------------------------------------------------------------
+TARGET		:=	renpy_ps3
+BUILD		:=	build
+SOURCES		:=	source source/module
 
-# Directories
-SOURCE_DIR	:= source
-MODULE_DIR	:= source/module
+INCLUDES	:=	include \
+				include/module \
+				include/module/src \
+				include/module/fribidi-src/lib
 
-# Source files
-# We include main.c, ps3_stubs.c and all generated module .c files
-CFILES		:= source/main.c source/ps3_stubs.c $(wildcard source/module/*.c)
-OFILES		:= $(CFILES:.c=.o)
+# External Includes from PORTLIBS
+PORTLIBS_INCLUDES := -I$(PORTLIBS)/include/python2.7 \
+					 -I$(PORTLIBS)/include/SDL2 \
+					 -I$(PORTLIBS)/include/freetype2 \
+					 -I$(PORTLIBS)/include
 
-# Include paths
-# PSL1GHT environment typically uses PORTLIBS for cross-compiled libs
-# Local includes are placed first to prefer bundled headers (like SDL_gfxPrimitives.h)
-# followed by SDL2 to ensure SDL2 is used for all core SDL functionality.
-INCLUDES	:= -I$(CURDIR)/include \
-			   -I$(CURDIR)/include/module \
-			   -I$(CURDIR)/include/module/src \
-			   -I$(CURDIR)/include/module/fribidi-src/lib \
-			   -I$(CURDIR)/../renpy/module/fribidi-src/lib \
-			   -I$(PORTLIBS)/include/python2.7 \
-			   -I$(PORTLIBS)/include/SDL2 \
-			   -I$(PORTLIBS)/include/freetype2 \
-			   -I$(PORTLIBS)/include \
-			   $(LIBPSL1GHT_INC)
+TITLE		:=	RenPy PS3
+APPID		:=	RENPY0001
+CONTENTID	:=	UP0001-$(APPID)_00-0000000000000000
 
-# Compiler flags
-# Added -D__PS3__ and used flags from your example
-# -DIMG_INIT_WEBP=0 is added because some PS3 portlibs lack WebP support in SDL_image
-CFLAGS		+= -O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDES)
+# Added -DIMG_INIT_WEBP=0 as before
+CFLAGS		:=	-O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP)
+LDFLAGS		:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map
 
-# Library paths
-LIBPATHS	:= -L$(PORTLIBS)/lib $(LIBPSL1GHT_LIB)
+#---------------------------------------------------------------------------------
+# any extra libraries we wish to link with the project
+#---------------------------------------------------------------------------------
+LIBS		:=	-lpython2.7 -lSDL_image -lSDL_mixer -lSDL2 -lfreetype -lpng -ljpeg -ltiff -lz -lm -lrt -llv2 -laudio -lio -lsysutil -lsysmodule -lnet -lrsx -lgcm_sys
 
-# Libraries
-# Added essential PS3 and RenPy dependencies
-# Note: -llv2 is used for liblv2.a, and -lbt is removed as it's not present in all PSL1GHT versions.
-# -laudio, -lio, -ltiff are added to resolve SDL2 and SDL_image dependencies.
-LIBS		:= -lpython2.7 -lSDL_image -lSDL_mixer -lSDL2 -lfreetype -lpng -ljpeg -ltiff -lz -lm -lrt -llv2 -laudio -lio -lsysutil -lsysmodule -lnet -lrsx -lgcm_sys
+#---------------------------------------------------------------------------------
+# list of directories containing libraries, this must be the top level containing
+# include and lib
+#---------------------------------------------------------------------------------
+LIBDIRS	:=	$(PORTLIBS)
 
-.PHONY: all clean
+#---------------------------------------------------------------------------------
+# no real need to edit anything past this point unless you need to add additional
+# rules for different file extensions
+#---------------------------------------------------------------------------------
+ifneq ($(BUILD),$(notdir $(CURDIR)))
+#---------------------------------------------------------------------------------
 
-all: $(TARGET).elf
+export OUTPUT	:=	$(CURDIR)/$(TARGET)
 
-$(TARGET).elf: $(OFILES)
-	$(CC) $(OFILES) $(LIBPATHS) $(LIBS) $(MACHDEP) -o $@
+export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
+export DEPSDIR	:=	$(CURDIR)/$(BUILD)
+
+export BUILDDIR	:=	$(CURDIR)/$(BUILD)
+
+#---------------------------------------------------------------------------------
+# automatically build a list of object files for our project
+#---------------------------------------------------------------------------------
+CFILES		:=	$(foreach dir,$(SOURCES),$(notdir ${wildcard $(dir)/*.c}))
+CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir ${wildcard $(dir)/*.cpp}))
+sFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
+
+#---------------------------------------------------------------------------------
+# use CXX for linking C++ projects, CC for standard C
+#---------------------------------------------------------------------------------
+ifeq ($(strip $(CPPFILES)),)
+	export LD	:=	$(CC)
+else
+	export LD	:=	$(CXX)
+endif
+
+export OFILES	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) \
+					$(sFILES:.s=.o) $(SFILES:.S=.o)
+
+#---------------------------------------------------------------------------------
+# build a list of include paths
+#---------------------------------------------------------------------------------
+export INCLUDE	:=	$(foreach dir,$(INCLUDES), -I$(CURDIR)/$(dir)) \
+					$(PORTLIBS_INCLUDES) \
+					$(LIBPSL1GHT_INC) \
+					-I$(CURDIR)/$(BUILD)
+
+#---------------------------------------------------------------------------------
+# build a list of library paths
+#---------------------------------------------------------------------------------
+export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
+					$(LIBPSL1GHT_LIB)
+
+export OUTPUT	:=	$(CURDIR)/$(TARGET)
+.PHONY: $(BUILD) clean
+
+#---------------------------------------------------------------------------------
+$(BUILD):
+	@[ -d $@ ] || mkdir -p $@
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.ps3
+
+#---------------------------------------------------------------------------------
 clean:
-	rm -f $(OFILES) $(TARGET).elf
+	@echo clean ...
+	@rm -fr $(BUILD) *.elf *.self *.pkg
+
+#---------------------------------------------------------------------------------
+else
+
+DEPENDS	:=	$(OFILES:.o=.d)
+
+#---------------------------------------------------------------------------------
+# main targets
+#---------------------------------------------------------------------------------
+all: $(OUTPUT).self
+
+$(OUTPUT).self: $(OUTPUT).elf
+
+$(OUTPUT).elf:	$(OFILES)
+	$(LD) $(OFILES) $(LIBPATHS) $(LIBS) $(LDFLAGS) -o $@
+
+-include $(DEPENDS)
+#---------------------------------------------------------------------------------
+endif
+#---------------------------------------------------------------------------------
