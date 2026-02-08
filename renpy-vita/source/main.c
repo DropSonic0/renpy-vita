@@ -139,11 +139,12 @@ int main(int argc, char* argv[])
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 
-    printf("Ren'Py PS3: [V26-SYSCALL-TRACE] Main started\n");
+    printf("Ren'Py PS3: [V27-FS-TRACE] Main started\n");
     printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V26-SYSCALLS] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V27-FS-TRACE] STARTING\n");
     printf("****************************************\n\n");
+    printf("Ren'Py PS3: fileno(stdout) = %d, fileno(stderr) = %d\n", fileno(stdout), fileno(stderr));
     fflush(stdout);
 #endif
 
@@ -155,7 +156,7 @@ int main(int argc, char* argv[])
 #endif
 
     Py_NoSiteFlag = 1;
-    Py_IgnoreEnvironmentFlag = 1;
+    Py_IgnoreEnvironmentFlag = 0; /* Let it use PYTHONPATH */
     Py_NoUserSiteDirectory = 1;
     Py_OptimizeFlag = 0;
     Py_VerboseFlag = 2; /* Enable verbose logging for Python init */

@@ -8,6 +8,19 @@
 #include <unistd.h>
 #include <lv2/sysfs.h>
 #include <sys/file.h>
+#include <stdarg.h>
+#include <fcntl.h>
+
+static int _in_stub = 0;
+static void _log(const char *fmt, ...) {
+    if (_in_stub) return;
+    _in_stub = 1;
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    _in_stub = 0;
+}
 
 /* Undefine potential macros from signal.h that conflict with stubs */
 #undef sigemptyset
@@ -71,7 +84,7 @@ int fstat(int fd, struct stat *buf) {
             buf->st_nlink = 1;
             buf->st_blksize = 4096;
         }
-        printf("fstat(%d) -> SUCCESS (Std Stream)\n", fd);
+        _log("STUB: fstat(%d) -> SUCCESS (Std Stream)\n", fd);
         return 0;
     }
     sysFSStat lv2_st;
@@ -86,7 +99,7 @@ int fstat(int fd, struct stat *buf) {
     if (res == 0) {
         map_stat(buf, &lv2_st);
         if (buf->st_size == 0 && end > 0) buf->st_size = end;
-        printf("fstat(%d) -> size %lld (lseek %lld), mode %08x\n", fd, (long long)buf->st_size, (long long)end, (unsigned int)buf->st_mode);
+        _log("STUB: fstat(%d) -> size %lld (lseek %lld), mode %08x\n", fd, (long long)buf->st_size, (long long)end, (unsigned int)buf->st_mode);
         return 0;
     }
     // Fallback
@@ -95,7 +108,7 @@ int fstat(int fd, struct stat *buf) {
         buf->st_mode = 0100000 | 0666;
         buf->st_size = end;
     }
-    printf("fstat(%d) -> FALLBACK %08x, size %lld\n", fd, (unsigned int)res, (long long)end);
+    _log("STUB: fstat(%d) -> FALLBACK %08x, size %lld\n", fd, (unsigned int)res, (long long)end);
     return 0;
 }
 
@@ -104,13 +117,40 @@ int stat(const char *path, struct stat *buf) {
     s32 res = sysLv2FsStat(path, &lv2_st);
     if (res == 0) {
         map_stat(buf, &lv2_st);
-        printf("stat(%s) -> size %lld, mode %08x\n", path, (long long)buf->st_size, (unsigned int)buf->st_mode);
+        _log("STUB: stat(%s) -> size %lld, mode %08x\n", path, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
     return -1;
 }
 
 int lstat(const char *path, struct stat *buf) { return stat(path, buf); }
+
+#undef open
+int open(const char *path, int flags, ...) {
+    unsigned int mode = 0;
+    if (flags & O_CREAT) {
+        va_list args;
+        va_start(args, flags);
+        mode = va_arg(args, unsigned int);
+        va_end(args);
+    }
+    s32 fd = -1;
+    s32 res = sysLv2FsOpen(path, flags, &fd, mode, NULL, 0);
+    _log("STUB: open(%s, %x) -> fd %d (res %x)\n", path, flags, (int)fd, (unsigned int)res);
+    if (res == 0) return (int)fd;
+    errno = (int)res;
+    return -1;
+}
+
+#undef close
+int close(int fd) {
+    if (fd >= 0 && fd <= 2) return 0;
+    s32 res = sysLv2FsClose((s32)fd);
+    _log("STUB: close(%d) -> %x\n", fd, (unsigned int)res);
+    if (res == 0) return 0;
+    errno = (int)res;
+    return -1;
+}
 
 /* Stubs for popen/pclose if not available in PSL1GHT */
 FILE *popen(const char *command, const char *type) { printf("STUB: popen %s\n", command); return NULL; }
