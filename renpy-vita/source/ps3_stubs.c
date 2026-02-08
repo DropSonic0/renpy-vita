@@ -5,6 +5,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <unistd.h>
+#include <lv2/sysfs.h>
 
 /* Undefine potential macros from signal.h */
 #undef sigemptyset
@@ -35,14 +37,33 @@ char *ttyname(int fd) { printf("STUB: ttyname %d\n", fd); return NULL; }
 int readlink(const char *path, char *buf, size_t bufsiz) { printf("STUB: readlink %s\n", path); errno = ENOSYS; return -1; }
 int gethostname(char *name, size_t len) { printf("STUB: gethostname\n"); snprintf(name, len, "ps3"); return 0; }
 long sysconf(int name) { printf("STUB: sysconf %d\n", name); return -1; }
-int isatty(int fd) { printf("STUB: isatty %d\n", fd); return 0; }
+int isatty(int fd) { return 0; }
+
 int fstat(int fildes, struct stat *buf) { 
-    printf("STUB: fstat %d\n", fildes); 
-    if (buf) {
-        memset(buf, 0, sizeof(struct stat));
-        buf->st_mode = S_IFCHR; // Pretend it's a character device
+    sysFSStat lv2_st;
+    s32 res = sysFsFstat(fildes, &lv2_st);
+    if (res == 0) {
+        if (buf) {
+            memset(buf, 0, sizeof(struct stat));
+            buf->st_mode = lv2_st.st_mode;
+            buf->st_size = lv2_st.st_size;
+            buf->st_atime = lv2_st.st_atime;
+            buf->st_mtime = lv2_st.st_mtime;
+            buf->st_ctime = lv2_st.st_ctime;
+            // printf("fstat %d: size %lld\n", fildes, (long long)buf->st_size);
+        }
+        return 0;
     }
-    return 0; 
+    // printf("STUB: fstat %d failed: %08x\n", fildes, (unsigned int)res);
+    return -1;
+}
+
+char *getcwd(char *buf, size_t size) {
+    if (buf && size > 30) {
+        strncpy(buf, "/dev_hdd0/game/RENPY0001/USRDIR", size);
+        return buf;
+    }
+    return NULL;
 }
 
 /* Stubs for popen/pclose if not available in PSL1GHT */
