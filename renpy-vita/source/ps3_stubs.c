@@ -39,9 +39,11 @@ int fstat(int fildes, struct stat *buf) {
             buf->st_atime = lv2_st.st_atime;
             buf->st_mtime = lv2_st.st_mtime;
             buf->st_ctime = lv2_st.st_ctime;
+            printf("fstat(%d) -> size %lld, mode %08x\n", fildes, (long long)buf->st_size, (unsigned int)buf->st_mode);
         }
         return 0;
     }
+    printf("fstat(%d) -> FAILED %08x\n", fildes, (unsigned int)res);
     return -1;
 }
 

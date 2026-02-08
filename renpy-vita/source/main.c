@@ -133,14 +133,16 @@ int main(int argc, char* argv[])
 #ifdef __PS3__
     /* Try to create log file as early as possible and redirect stdout/stderr */
     ps3_log_fp = freopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w", stdout);
-    dup2(fileno(stdout), fileno(stderr));
-
     if (ps3_log_fp) {
-        printf("Ren'Py PS3: [v21-debug] Main started\n");
-        printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
+        dup2(fileno(stdout), fileno(stderr));
+        setvbuf(stdout, NULL, _IONBF, 0);
+        setvbuf(stderr, NULL, _IONBF, 0);
     }
+
+    printf("Ren'Py PS3: [V25-DEEP-TRACE] Main started\n");
+    printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V21-DEBUG] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V25-TRACE] STARTING\n");
     printf("****************************************\n\n");
     fflush(stdout);
 #endif
@@ -236,25 +238,14 @@ int main(int argc, char* argv[])
 
     printf("Ren'Py PS3: App dir path: %s\n", app_dir_path);
     fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: App dir path: %s\n", app_dir_path);
-        fflush(ps3_log_fp);
-    }
 
     /* Initialize PS3 stuff if needed */
     printf("Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
     fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
-        fflush(ps3_log_fp);
-    }
+
     Py_SetProgramName(app_program_path);
     printf("Ren'Py PS3: Py_SetProgramName done.\n");
     fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Py_SetProgramName done.\n");
-        fflush(ps3_log_fp);
-    }
 #endif
 
     static struct _inittab builtins[] = {
@@ -364,10 +355,6 @@ int main(int argc, char* argv[])
         }
         printf("Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
         fflush(stdout);
-        if (ps3_log_fp) {
-            fprintf(ps3_log_fp, "Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
-            fflush(ps3_log_fp);
-        }
 
         /* Check for python27.zip in /lib/ or root */
         const char* python_zip_subpaths[] = {"/lib/python27.zip", "/python27.zip"};
