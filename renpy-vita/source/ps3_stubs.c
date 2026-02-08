@@ -63,9 +63,9 @@ int fstat(int fildes, struct stat *buf) {
 
     // Also try to get size via Lseek as a backup/validation
     u64 cur_pos = 0, end_pos = 0;
-    sysFsLseek(fildes, 0, 1, &cur_pos); // SEEK_CUR
-    sysFsLseek(fildes, 0, 2, &end_pos); // SEEK_END
-    sysFsLseek(fildes, (s64)cur_pos, 0, &cur_pos); // SEEK_SET
+    sysLv2FsLSeek64(fildes, 0, 1, &cur_pos); // SEEK_CUR
+    sysLv2FsLSeek64(fildes, 0, 2, &end_pos); // SEEK_END
+    sysLv2FsLSeek64(fildes, cur_pos, 0, &cur_pos); // SEEK_SET
 
     if (res == 0) {
         if (buf) {
