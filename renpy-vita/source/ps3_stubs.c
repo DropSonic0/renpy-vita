@@ -25,6 +25,7 @@ void *getgrgid(unsigned int gid) { return NULL; }
 void *getgrnam(const char *name) { return NULL; }
 
 /* Python stubs */
+void PyEval_InitThreads() { }
 
 /* SDL_image stubs for SDL2 compatibility if only SDL1 version is present.
    SDL1.2 SDL_image is binary-incompatible with SDL2 SDL_RWops. */

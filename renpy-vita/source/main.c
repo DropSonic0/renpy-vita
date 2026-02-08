@@ -462,8 +462,8 @@ int main(int argc, char* argv[])
         fprintf(ps3_log_fp, "Ren'Py PS3: Extending Inittab...\n");
         fflush(ps3_log_fp);
     }
-    /* Temporarily commented out to see if basic init works */
-    /* PyImport_ExtendInittab(builtins); */
+    /* Restore Inittab extension */
+    PyImport_ExtendInittab(builtins);
 
     printf("Ren'Py PS3: Initializing Python (Py_Initialize)... \n");
     fflush(stdout);
