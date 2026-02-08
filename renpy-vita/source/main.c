@@ -21,8 +21,8 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sys/memory.h>
 #include <sysutil/sysutil.h>
 
-/* Set process parameters: Priority 1001, 1MB stack size */
-SYS_PROCESS_PARAM(1001, 0x100000);
+/* Set process parameters: Priority 1001, 4MB stack size */
+SYS_PROCESS_PARAM(1001, 0x400000);
 #endif
 
 #define MAX_PATH 256
@@ -156,6 +156,7 @@ int main(int argc, char* argv[])
     Py_IgnoreEnvironmentFlag = 1;
     Py_NoUserSiteDirectory = 1;
     Py_OptimizeFlag = 0;
+    Py_VerboseFlag = 2; /* Enable verbose logging for Python init */
 
 #ifdef __psp2__
     /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
@@ -443,10 +444,13 @@ int main(int argc, char* argv[])
     }
     fflush(stdout);
 
-    /* Comment out for now to see if Py_InitializeEx alone works */
-    printf("Ren'Py PS3: Skipping Inittab extension for test...\n");
+    printf("Ren'Py PS3: Extending Inittab...\n");
     fflush(stdout);
-    /* PyImport_ExtendInittab(builtins); */
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Extending Inittab...\n");
+        fflush(ps3_log_fp);
+    }
+    PyImport_ExtendInittab(builtins);
 
     printf("Ren'Py PS3: Initializing Python (Py_InitializeEx)...\n");
     fflush(stdout);
