@@ -21,8 +21,8 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sys/memory.h>
 #include <sysutil/sysutil.h>
 
-/* Set process parameters: Priority 1001, 2MB stack size */
-SYS_PROCESS_PARAM(1001, 0x200000);
+/* Set process parameters: Priority 1001, 1MB stack size */
+SYS_PROCESS_PARAM(1001, 0x100000);
 #endif
 
 #define MAX_PATH 256
@@ -138,10 +138,15 @@ int main(int argc, char* argv[])
     /* Try to create log file as early as possible */
     ps3_log_fp = fopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w");
     if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Main started\n");
+        fprintf(ps3_log_fp, "Ren'Py PS3: [V21-TRACE] Main started\n");
         fflush(ps3_log_fp);
     }
-    printf("Ren'Py PS3: Initializing...\n");
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    printf("\n\n****************************************\n");
+    printf("Ren'Py PS3: [BUILD V21-TRACE] STARTING\n");
+    printf("****************************************\n\n");
     fflush(stdout);
 #endif
 
@@ -157,6 +162,7 @@ int main(int argc, char* argv[])
     Py_NoUserSiteDirectory = 1;
     Py_OptimizeFlag = 0;
     Py_VerboseFlag = 2; /* Enable verbose logging for Python init */
+    Py_DebugFlag = 0; /* Disable debug logging to reduce noise */
     Py_HashRandomizationFlag = 0; /* Avoid hanging for entropy */
 
 #ifdef __psp2__
@@ -372,15 +378,14 @@ int main(int argc, char* argv[])
         const char* python_zip_subpaths[] = {"/lib/python27.zip", "/python27.zip"};
         for (int j = 0; j < 2; j++) {
             snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_zip_subpaths[j]);
-            FILE* f = fopen(sysconfigdata_file_path, "rb");
-            if (f) {
-                printf("Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
+            struct stat st;
+            if (stat(sysconfigdata_file_path, &st) == 0) {
+                printf("Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
                 found_sysconfigdata = 1;
                 strncpy(python_home_buffer, sysconfigdata_file_path, sizeof(python_home_buffer));
                 python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
-                fclose(f);
                 if (ps3_log_fp) {
-                    fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s\n", sysconfigdata_file_path);
+                    fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
                     fflush(ps3_log_fp);
                 }
                 break;
@@ -426,10 +431,13 @@ int main(int argc, char* argv[])
             }
             printf("Ren'Py PS3: Calling Py_SetPythonHome(%s)...\n", python_home_buffer);
             fflush(stdout);
-            /* Temporarily use NULL to see if it avoids the hang */
-            Py_SetPythonHome(NULL);
-            printf("Ren'Py PS3: Py_SetPythonHome(NULL) done.\n");
+            Py_SetPythonHome(python_home_buffer);
+            printf("Ren'Py PS3: Py_SetPythonHome(%s) done.\n", python_home_buffer);
             fflush(stdout);
+            if (ps3_log_fp) {
+                fprintf(ps3_log_fp, "Ren'Py PS3: Py_SetPythonHome(%s) done.\n", python_home_buffer);
+                fflush(ps3_log_fp);
+            }
             break;
         }
     }
@@ -460,6 +468,10 @@ int main(int argc, char* argv[])
 
     printf("Ren'Py PS3: Python Version: %s\n", Py_GetVersion());
     fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Python Version: %s\n", Py_GetVersion());
+        fflush(ps3_log_fp);
+    }
 
     printf("Ren'Py PS3: Extending Inittab...\n");
     fflush(stdout);
@@ -470,14 +482,23 @@ int main(int argc, char* argv[])
     /* Restore Inittab extension */
     PyImport_ExtendInittab(builtins);
 
-    printf("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
+    printf("Ren'Py PS3: Initializing Python (Py_Initialize())... \n");
     fflush(stdout);
     if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
+        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_Initialize())... \n");
         fflush(ps3_log_fp);
     }
 
-    /* Use Py_InitializeEx(0) to disable signal handlers */
+    /* Disable hash randomization just in case it's trying to read /dev/urandom */
+    Py_HashRandomizationFlag = 0;
+
+    /* Use Py_InitializeEx(0) to disable signal handlers which might be problematic */
+    printf("Ren'Py PS3: Entering Py_InitializeEx(0)...\n");
+    fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Entering Py_InitializeEx(0)...\n");
+        fflush(ps3_log_fp);
+    }
     Py_InitializeEx(0);
 
     printf("Ren'Py PS3: Python Initialized!\n");
@@ -486,8 +507,6 @@ int main(int argc, char* argv[])
         fprintf(ps3_log_fp, "Ren'Py PS3: Python Initialized!\n");
         fflush(ps3_log_fp);
     }
-
-    PyObject *pmodule;
 
     char* pyargs[] = {
         python_script_buffer,

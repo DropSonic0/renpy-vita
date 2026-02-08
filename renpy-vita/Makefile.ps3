@@ -107,7 +107,12 @@ export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
 
 # Added -DIMG_INIT_WEBP=0 as before
 export CFLAGS	:=	-O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDE)
-export LDFLAGS	:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map
+export LDFLAGS	:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map \
+                    -Wl,--wrap=stat -Wl,--wrap=fstat -Wl,--wrap=open -Wl,--wrap=isatty -Wl,--wrap=getenv \
+                    -Wl,--wrap=time -Wl,--wrap=gettimeofday -Wl,--wrap=access -Wl,--wrap=read -Wl,--wrap=write \
+                    -Wl,--wrap=malloc -Wl,--wrap=realloc -Wl,--wrap=calloc -Wl,--wrap=free -Wl,--wrap=abort -Wl,--wrap=exit \
+                    -Wl,--wrap=lseek -Wl,--wrap=close -Wl,--wrap=signal -Wl,--wrap=sigaction -Wl,--wrap=setlocale \
+                    -Wl,--wrap=sleep -Wl,--wrap=usleep -Wl,--wrap=fopen
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 .PHONY: $(BUILD) clean
