@@ -155,7 +155,7 @@ int main(int argc, char* argv[])
     Py_NoSiteFlag = 1;
     Py_IgnoreEnvironmentFlag = 1;
     Py_NoUserSiteDirectory = 1;
-    Py_OptimizeFlag = 2;
+    Py_OptimizeFlag = 0;
 
 #ifdef __psp2__
     /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
@@ -239,7 +239,11 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize PS3 stuff if needed */
+    printf("Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
+    fflush(stdout);
     Py_SetProgramName(app_program_path);
+    printf("Ren'Py PS3: Py_SetProgramName done.\n");
+    fflush(stdout);
 #endif
 
     static struct _inittab builtins[] = {
@@ -410,12 +414,11 @@ int main(int argc, char* argv[])
                 fprintf(ps3_log_fp, "Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
                 fflush(ps3_log_fp);
             }
-            Py_SetPythonHome(python_home_buffer);
+            printf("Ren'Py PS3: Calling Py_SetPythonHome(%s)...\n", python_home_buffer);
             fflush(stdout);
-            if (ps3_log_fp) {
-                fprintf(ps3_log_fp, "Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
-                fflush(ps3_log_fp);
-            }
+            Py_SetPythonHome(python_home_buffer);
+            printf("Ren'Py PS3: Py_SetPythonHome done.\n");
+            fflush(stdout);
             break;
         }
     }
@@ -430,13 +433,20 @@ int main(int argc, char* argv[])
         show_error_and_exit("Could not find renpy.py.\n");
     }
 
-    printf("Ren'Py PS3: Extending Inittab...\n");
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Extending Inittab...\n");
-        fflush(ps3_log_fp);
+    printf("Ren'Py PS3: Testing malloc...\n");
+    void* test_mem = malloc(1024 * 1024);
+    if (test_mem) {
+        printf("Ren'Py PS3: malloc(1MB) success.\n");
+        free(test_mem);
+    } else {
+        printf("Ren'Py PS3: malloc(1MB) FAILED.\n");
     }
-    PyImport_ExtendInittab(builtins);
+    fflush(stdout);
+
+    /* Comment out for now to see if Py_InitializeEx alone works */
+    printf("Ren'Py PS3: Skipping Inittab extension for test...\n");
+    fflush(stdout);
+    /* PyImport_ExtendInittab(builtins); */
 
     printf("Ren'Py PS3: Initializing Python (Py_InitializeEx)...\n");
     fflush(stdout);
