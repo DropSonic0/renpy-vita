@@ -263,7 +263,65 @@ int main(int argc, char* argv[])
 #endif
 
     static struct _inittab builtins[] = {
-        /* [MINIMAL-TEST] Empty inittab to isolate Py_Initialize hang */
+        {"pygame_sdl2.color", initpygame_sdl2_color},
+        {"pygame_sdl2.controller", initpygame_sdl2_controller},
+        {"pygame_sdl2.display", initpygame_sdl2_display},
+        {"pygame_sdl2.draw", initpygame_sdl2_draw},
+        {"pygame_sdl2.error", initpygame_sdl2_error},
+        {"pygame_sdl2.event", initpygame_sdl2_event},
+        {"pygame_sdl2.gfxdraw", initpygame_sdl2_gfxdraw},
+        {"pygame_sdl2.image", initpygame_sdl2_image},
+        {"pygame_sdl2.joystick", initpygame_sdl2_joystick},
+        {"pygame_sdl2.key", initpygame_sdl2_key},
+        {"pygame_sdl2.locals", initpygame_sdl2_locals},
+        {"pygame_sdl2.mouse", initpygame_sdl2_mouse},
+        {"pygame_sdl2.power", initpygame_sdl2_power},
+        {"pygame_sdl2.pygame_time", initpygame_sdl2_pygame_time},
+        {"pygame_sdl2.rect", initpygame_sdl2_rect},
+        {"pygame_sdl2.render", initpygame_sdl2_render},
+        {"pygame_sdl2.rwobject", initpygame_sdl2_rwobject},
+        {"pygame_sdl2.scrap", initpygame_sdl2_scrap},
+        {"pygame_sdl2.surface", initpygame_sdl2_surface},
+        {"pygame_sdl2.transform", initpygame_sdl2_transform},
+        {"_renpy", init_renpy},
+        {"_renpybidi", init_renpybidi},
+        {"renpy.audio.renpysound", initrenpy_audio_renpysound},
+        {"renpy.display.accelerator", initrenpy_display_accelerator},
+        {"renpy.display.matrix", initrenpy_display_matrix},
+        {"renpy.display.render", initrenpy_display_render},
+        {"renpy.gl.gldraw", initrenpy_gl_gldraw},
+        {"renpy.gl.glenviron_shader", initrenpy_gl_glenviron_shader},
+        {"renpy.gl.glrtt_copy", initrenpy_gl_glrtt_copy},
+        {"renpy.gl.glrtt_fbo", initrenpy_gl_glrtt_fbo},
+        {"renpy.gl.gltexture", initrenpy_gl_gltexture},
+        {"renpy.gl2.gl2draw", initrenpy_gl2_gl2draw},
+        {"renpy.gl2.gl2mesh", initrenpy_gl2_gl2mesh},
+        {"renpy.gl2.gl2mesh2", initrenpy_gl2_gl2mesh2},
+        {"renpy.gl2.gl2mesh3", initrenpy_gl2_gl2mesh3},
+        {"renpy.gl2.gl2model", initrenpy_gl2_gl2model},
+        {"renpy.gl2.gl2polygon", initrenpy_gl2_gl2polygon},
+        {"renpy.gl2.gl2shader", initrenpy_gl2_gl2shader},
+        {"renpy.gl2.gl2texture", initrenpy_gl2_gl2texture},
+        {"renpy.parsersupport", initrenpy_parsersupport},
+        {"renpy.pydict", initrenpy_pydict},
+        {"renpy.style", initrenpy_style},
+        {"renpy.styledata.style_activate_functions", initrenpy_styledata_style_activate_functions},
+        {"renpy.styledata.style_functions", initrenpy_styledata_style_functions},
+        {"renpy.styledata.style_hover_functions", initrenpy_styledata_style_hover_functions},
+        {"renpy.styledata.style_idle_functions", initrenpy_styledata_style_idle_functions},
+        {"renpy.styledata.style_insensitive_functions", initrenpy_styledata_style_insensitive_functions},
+        {"renpy.styledata.style_selected_activate_functions", initrenpy_styledata_style_selected_activate_functions},
+        {"renpy.styledata.style_selected_functions", initrenpy_styledata_style_selected_functions},
+        {"renpy.styledata.style_selected_hover_functions", initrenpy_styledata_style_selected_hover_functions},
+        {"renpy.styledata.style_selected_idle_functions", initrenpy_styledata_style_selected_idle_functions},
+        {"renpy.styledata.style_selected_insensitive_functions", initrenpy_styledata_style_selected_insensitive_functions},
+        {"renpy.styledata.styleclass", initrenpy_styledata_styleclass},
+        {"renpy.styledata.stylesets", initrenpy_styledata_stylesets},
+        {"renpy.text.ftfont", initrenpy_text_ftfont},
+        {"renpy.text.textsupport", initrenpy_text_textsupport},
+        {"renpy.text.texwrap", initrenpy_text_texwrap},
+        {"renpy.uguu.gl", initrenpy_uguu_gl},
+        {"renpy.uguu.uguu", initrenpy_uguu_uguu},
         {NULL, NULL}
     };
 
@@ -289,6 +347,7 @@ int main(int argc, char* argv[])
 
     int found_sysconfigdata = 0;
     int found_renpy = 0;
+    int is_zip = 0;
 
     for (int i = 0; i < sizeof(dir_paths) / sizeof(char*); i += 1)
     {
@@ -307,26 +366,42 @@ int main(int argc, char* argv[])
             fflush(ps3_log_fp);
         }
 
-        /* Check for python27.zip in /lib/ or root */
-        const char* python_zip_subpaths[] = {"/lib/python27.zip", "/python27.zip"};
+        /* 1. Try "loose" library folder first (unzipped) */
+        const char* python_lib_subpaths[] = {"/lib/python2.7", "/python2.7"};
         for (int j = 0; j < 2; j++) {
-            snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_zip_subpaths[j]);
+            snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_lib_subpaths[j]);
+            char os_py_check[512];
+            snprintf(os_py_check, sizeof(os_py_check), "%s/os.py", sysconfigdata_file_path);
             struct stat st;
-            if (stat(sysconfigdata_file_path, &st) == 0) {
-                printf("Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
+            if (stat(os_py_check, &st) == 0) {
+                printf("Ren'Py PS3: Found loose python library at %s\n", sysconfigdata_file_path);
                 found_sysconfigdata = 1;
-                strncpy(python_home_buffer, sysconfigdata_file_path, sizeof(python_home_buffer));
-                python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
-                if (ps3_log_fp) {
-                    fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
-                    fflush(ps3_log_fp);
-                }
+                is_zip = 0;
                 break;
-            } else {
-                if (ps3_log_fp) {
-                    fprintf(ps3_log_fp, "Ren'Py PS3: python27.zip NOT found at %s\n", sysconfigdata_file_path);
-                    fflush(ps3_log_fp);
+            }
+        }
+
+        /* 2. Fallback to python27.zip */
+        if (!found_sysconfigdata) {
+            const char* python_zip_subpaths[] = {"/lib/python27.zip", "/python27.zip"};
+            for (int j = 0; j < 2; j++) {
+                snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_zip_subpaths[j]);
+                struct stat st;
+                if (stat(sysconfigdata_file_path, &st) == 0) {
+                    printf("Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
+                    found_sysconfigdata = 1;
+                    is_zip = 1;
+                    break;
                 }
+            }
+        }
+
+        if (found_sysconfigdata) {
+            strncpy(python_home_buffer, sysconfigdata_file_path, sizeof(python_home_buffer));
+            python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
+            if (ps3_log_fp) {
+                fprintf(ps3_log_fp, "Ren'Py PS3: Found Python library at %s (zip=%d)\n", sysconfigdata_file_path, is_zip);
+                fflush(ps3_log_fp);
             }
         }
 
