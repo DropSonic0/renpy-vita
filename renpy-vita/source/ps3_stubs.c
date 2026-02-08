@@ -96,8 +96,16 @@ void __wrap_free(void* ptr) {
     __real_free(ptr);
 }
 
+#define DUMMY_URANDOM_FD 999
+
 int __wrap_open(const char *pathname, int flags, ...) {
     wrap_log("WRAP: open(%s, 0x%x)\n", pathname, flags);
+
+    if (pathname && (strcmp(pathname, "/dev/urandom") == 0 || strcmp(pathname, "/dev/random") == 0)) {
+        wrap_log("WRAP: open(/dev/urandom) - providing dummy fd %d\n", DUMMY_URANDOM_FD);
+        return DUMMY_URANDOM_FD;
+    }
+
     mode_t mode = 0;
     if (flags & O_CREAT) {
         va_list arg;
@@ -109,6 +117,12 @@ int __wrap_open(const char *pathname, int flags, ...) {
 }
 
 ssize_t __wrap_read(int fd, void *buf, size_t count) {
+    if (fd == DUMMY_URANDOM_FD) {
+        wrap_log("WRAP: read(DUMMY_URANDOM, count=%zu)\n", count);
+        memset(buf, 0x42, count); // Dummy predictable data
+        return count;
+    }
+
     wrap_log("WRAP: read(%d, count=%zu) entering\n", fd, count);
     ssize_t res = __real_read(fd, buf, count);
     wrap_log("WRAP: read(%d) returned %zd\n", fd, res);
@@ -156,6 +170,10 @@ off_t __wrap_lseek(int fd, off_t offset, int whence) {
 }
 
 int __wrap_close(int fd) {
+    if (fd == DUMMY_URANDOM_FD) {
+        wrap_log("WRAP: close(DUMMY_URANDOM)\n");
+        return 0;
+    }
     wrap_log("WRAP: close(%d)\n", fd);
     return __real_close(fd);
 }
