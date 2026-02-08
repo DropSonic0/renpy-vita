@@ -24,6 +24,15 @@ INCLUDES	:=	include \
 				include/module/src \
 				include/module/fribidi-src/lib
 
+# PSL1GHT environment typically uses PORTLIBS for cross-compiled libs
+ifeq ($(strip $(PORTLIBS)),)
+ifneq ($(strip $(PS3DEV)),)
+PORTLIBS := $(PS3DEV)/portlibs/ppu
+else
+PORTLIBS := $(PSL1GHT)/portlibs/ppu
+endif
+endif
+
 # External Includes from PORTLIBS
 PORTLIBS_INCLUDES := -I$(PORTLIBS)/include/python2.7 \
 					 -I$(PORTLIBS)/include/SDL2 \
@@ -34,14 +43,10 @@ TITLE		:=	RenPy PS3
 APPID		:=	RENPY0001
 CONTENTID	:=	UP0001-$(APPID)_00-0000000000000000
 
-# Added -DIMG_INIT_WEBP=0 as before
-CFLAGS		:=	-O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP)
-LDFLAGS		:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map
-
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #---------------------------------------------------------------------------------
-LIBS		:=	-lpython2.7 -lSDL_image -lSDL_mixer -lSDL2 -lfreetype -lpng -ljpeg -ltiff -lz -lm -lrt -llv2 -laudio -lio -lsysutil -lsysmodule -lnet -lrsx -lgcm_sys
+export LIBS		:=	-lpython2.7 -lSDL_image -lSDL_mixer -lSDL2 -lfreetype -lpng -ljpeg -ltiff -lz -lm -lrt -llv2 -laudio -lio -lsysutil -lsysmodule -lnet -lrsx -lgcm_sys
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -56,13 +61,15 @@ LIBDIRS	:=	$(PORTLIBS)
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 #---------------------------------------------------------------------------------
 
-export OUTPUT	:=	$(CURDIR)/$(TARGET)
+export ROOT		:=	$(CURDIR)
 
-export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+export OUTPUT	:=	$(ROOT)/$(TARGET)
 
-export DEPSDIR	:=	$(CURDIR)/$(BUILD)
+export VPATH	:=	$(foreach dir,$(SOURCES),$(ROOT)/$(dir))
 
-export BUILDDIR	:=	$(CURDIR)/$(BUILD)
+export DEPSDIR	:=	$(ROOT)/$(BUILD)
+
+export BUILDDIR	:=	$(ROOT)/$(BUILD)
 
 #---------------------------------------------------------------------------------
 # automatically build a list of object files for our project
@@ -87,16 +94,20 @@ export OFILES	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) \
 #---------------------------------------------------------------------------------
 # build a list of include paths
 #---------------------------------------------------------------------------------
-export INCLUDE	:=	$(foreach dir,$(INCLUDES), -I$(CURDIR)/$(dir)) \
+export INCLUDE	:=	$(foreach dir,$(INCLUDES), -I$(ROOT)/$(dir)) \
 					$(PORTLIBS_INCLUDES) \
 					$(LIBPSL1GHT_INC) \
-					-I$(CURDIR)/$(BUILD)
+					-I$(BUILDDIR)
 
 #---------------------------------------------------------------------------------
 # build a list of library paths
 #---------------------------------------------------------------------------------
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
 					$(LIBPSL1GHT_LIB)
+
+# Added -DIMG_INIT_WEBP=0 as before
+export CFLAGS	:=	-O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDE)
+export LDFLAGS	:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 .PHONY: $(BUILD) clean

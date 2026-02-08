@@ -224,7 +224,7 @@ int main(int argc, char* argv[])
 #ifdef __PS3__
     /* PS3 Paths */
     strncpy(title_id, "RENPY0001", sizeof(title_id));
-    title_id[sizeof(title_id)-1] = '\0';
+    title_id[sizeof(title_id) - 1] = '\0';
     snprintf(app_dir_path, sizeof(app_dir_path), "/dev_hdd0/game/%s/USRDIR", title_id);
     snprintf(app_program_path, sizeof(app_program_path), "%s/EBOOT.BIN", app_dir_path);
 
