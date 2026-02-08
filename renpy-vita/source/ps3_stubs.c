@@ -7,9 +7,16 @@
 #include <signal.h>
 #include <unistd.h>
 #include <lv2/sysfs.h>
+#include <sys/file.h>
 
 
-/* getpid, kill, sigaction, sigemptyset, getuid, getgid, geteuid, getegid, getppid are provided by the toolchain */
+/* get* functions are declared in unistd.h but missing from libraries */
+uid_t getuid(void) { return 0; }
+gid_t getgid(void) { return 0; }
+uid_t geteuid(void) { return 0; }
+gid_t getegid(void) { return 0; }
+pid_t getppid(void) { return 1; }
+
 int pipe(int fildes[2]) { printf("STUB: pipe\n"); errno = ENOSYS; return -1; }
 int fork() { printf("STUB: fork\n"); errno = ENOSYS; return -1; }
 int execv(const char *path, char *const argv[]) { printf("STUB: execv %s\n", path); errno = ENOSYS; return -1; }
@@ -23,7 +30,7 @@ int isatty(int fd) { return 0; }
 
 int fstat(int fildes, struct stat *buf) { 
     sysFSStat lv2_st;
-    s32 res = sysFsFstat(fildes, &lv2_st);
+    s32 res = sysLv2FsFStat(fildes, &lv2_st);
     if (res == 0) {
         if (buf) {
             memset(buf, 0, sizeof(struct stat));
@@ -32,20 +39,10 @@ int fstat(int fildes, struct stat *buf) {
             buf->st_atime = lv2_st.st_atime;
             buf->st_mtime = lv2_st.st_mtime;
             buf->st_ctime = lv2_st.st_ctime;
-            // printf("fstat %d: size %lld\n", fildes, (long long)buf->st_size);
         }
         return 0;
     }
-    // printf("STUB: fstat %d failed: %08x\n", fildes, (unsigned int)res);
     return -1;
-}
-
-char *getcwd(char *buf, size_t size) {
-    if (buf && size > 30) {
-        strncpy(buf, "/dev_hdd0/game/RENPY0001/USRDIR", size);
-        return buf;
-    }
-    return NULL;
 }
 
 /* Stubs for popen/pclose if not available in PSL1GHT */

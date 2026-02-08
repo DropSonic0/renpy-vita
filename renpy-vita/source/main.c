@@ -498,8 +498,6 @@ int main(int argc, char* argv[])
         /* This is where the fun begins */
         printf("Ren'Py PS3: Running renpy.py...\n");
         fflush(stdout);
-        printf("Ren'Py PS3: Running renpy.py...\n");
-        fflush(stdout);
         python_result = PyRun_SimpleFileEx(renpy_file, (const char*)python_script_buffer, 1);
     }
 
