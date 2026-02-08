@@ -70,6 +70,7 @@ PyMODINIT_FUNC initrenpy_gl2_gl2model();
 PyMODINIT_FUNC initrenpy_gl2_gl2polygon();
 PyMODINIT_FUNC initrenpy_gl2_gl2shader();
 PyMODINIT_FUNC initrenpy_gl2_gl2texture();
+PyMODINIT_FUNC initrenpy_compat_dictviews();
 PyMODINIT_FUNC initrenpy_parsersupport();
 PyMODINIT_FUNC initrenpy_pydict();
 PyMODINIT_FUNC initrenpy_style();
@@ -105,12 +106,30 @@ char python_script_buffer[0x400];
 char python_error_buffer[0x400];
 char title_id[0xA];
 
+#ifdef __psp2__
 SceUID pid = -1;
+#endif
+
+#ifdef __PS3__
+typedef int SceUID;
+int pid = -1;
+#endif
+
+void log_message(const char* message)
+{
+    FILE* f = fopen("/dev_hdd0/game/RENPY0001/USRDIR/renpy_ps3.log", "a");
+    if (f) {
+        fprintf(f, "%s\n", message);
+        fclose(f);
+    }
+    printf("%s\n", message);
+}
 
 void show_error_and_exit(const char* message)
 {
+    log_message("ERROR:");
+    log_message(message);
     Py_Finalize();
-    printf("%s", message);
     Py_Exit(1);
 }
 
@@ -203,6 +222,11 @@ int main(int argc, char* argv[])
 
     /* Initialize PS3 stuff if needed */
     Py_SetProgramName(app_program_path);
+
+    /* Clear log file */
+    FILE* f = fopen("/dev_hdd0/game/RENPY0001/USRDIR/renpy_ps3.log", "w");
+    if (f) fclose(f);
+    log_message("Starting Ren'Py on PS3...");
 #endif
 
     static struct _inittab builtins[] = {
@@ -253,6 +277,7 @@ int main(int argc, char* argv[])
         {"renpy.gl2.gl2polygon", initrenpy_gl2_gl2polygon},
         {"renpy.gl2.gl2shader", initrenpy_gl2_gl2shader},
         {"renpy.gl2.gl2texture", initrenpy_gl2_gl2texture},
+        {"renpy.compat.dictviews", initrenpy_compat_dictviews},
         {"renpy.parsersupport", initrenpy_parsersupport},
         {"renpy.pydict", initrenpy_pydict},
         {"renpy.style", initrenpy_style},
@@ -277,7 +302,13 @@ int main(int argc, char* argv[])
         {NULL, NULL}
     };
 
-    getcwd(relative_dir_path, sizeof(relative_dir_path));
+    if (getcwd(relative_dir_path, sizeof(relative_dir_path)) != NULL) {
+        log_message("Current working directory:");
+        log_message(relative_dir_path);
+    } else {
+        log_message("getcwd failed.");
+        relative_dir_path[0] = '\0';
+    }
 
     char* dir_paths[] = {
         app_dir_path,
@@ -288,13 +319,11 @@ int main(int argc, char* argv[])
     int found_sysconfigdata = 0;
     int found_renpy = 0;
 
-    for (int i = 0; i < sizeof(dir_paths); i += 1)
+    for (int i = 0; dir_paths[i] != NULL; i += 1)
     {
-        if (dir_paths[i] == NULL)
-        {
-            break;
-        }
         snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s/lib/python27.zip", dir_paths[i]);
+        log_message("Checking for python27.zip at:");
+        log_message(sysconfigdata_file_path);
         FILE* sysconfigdata_file = fopen((const char*)sysconfigdata_file_path, "rb");
         if (sysconfigdata_file != NULL)
         {
@@ -303,6 +332,8 @@ int main(int argc, char* argv[])
         }
 
         snprintf(python_script_buffer, sizeof(python_script_buffer), "%s/renpy.py", dir_paths[i]);
+        log_message("Checking for renpy.py at:");
+        log_message(python_script_buffer);
         FILE* renpy_file = fopen((const char*)python_script_buffer, "rb");
         if (renpy_file != NULL)
         {
@@ -312,8 +343,9 @@ int main(int argc, char* argv[])
 
         if (found_sysconfigdata == 1 && found_renpy == 1)
         {
-            snprintf(python_home_buffer, sizeof(python_home_buffer), "%s/lib/python27.zip", dir_paths[i]);
-            snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s/lib/python27.zip']", dir_paths[i]);
+            log_message("Found both python27.zip and renpy.py.");
+            snprintf(python_home_buffer, sizeof(python_home_buffer), "%s/lib", dir_paths[i]);
+            snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s/lib/python27.zip', '%s/lib', '%s']", dir_paths[i], dir_paths[i], dir_paths[i]);
             Py_SetPythonHome(python_home_buffer);
             break;
         }
@@ -329,7 +361,9 @@ int main(int argc, char* argv[])
         show_error_and_exit("Could not find renpy.py.\n");
     }
 
+    log_message("Initializing Python...");
     Py_InitializeEx(0);
+    log_message("Python initialized.");
 
     PyImport_ExtendInittab(builtins);
 
@@ -345,12 +379,17 @@ int main(int argc, char* argv[])
 
     int python_result;
 
+    log_message("Setting Python path...");
+    log_message(python_snprintf_buffer);
     python_result = PyRun_SimpleString(python_snprintf_buffer);
 
     if (python_result == -1)
     {
         show_error_and_exit("Could not set the Python path.\n\nThis is an internal error and should not occur during normal usage.");
     }
+    log_message("Python path set.");
+
+    PyRun_SimpleString("import sys\nlog = open('/dev_hdd0/game/RENPY0001/USRDIR/renpy_ps3.log', 'a')\nlog.write('Python sys.path: ' + str(sys.path) + '\\n')\nlog.close()");
 
 #define x(lib) \
     { \
@@ -360,12 +399,15 @@ int main(int argc, char* argv[])
         } \
     }
 
+    log_message("Importing basic modules...");
     x("os");
     x("pygame_sdl2");
     x("encodings");
+    log_message("Basic modules imported.");
 
 #undef x
 
+    log_message("Opening renpy.py...");
     FILE* renpy_file = fopen((const char*)python_script_buffer, "rb");
     if (renpy_file == NULL)
     {
@@ -374,6 +416,7 @@ int main(int argc, char* argv[])
     else
     {
         /* This is where the fun begins */
+        log_message("Running renpy.py...");
         python_result = PyRun_SimpleFileEx(renpy_file, (const char*)python_script_buffer, 1);
     }
 
