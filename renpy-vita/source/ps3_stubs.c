@@ -8,26 +8,8 @@
 #include <unistd.h>
 #include <lv2/sysfs.h>
 
-/* Undefine potential macros from signal.h */
-#undef sigemptyset
-#undef sigfillset
-#undef sigaddset
-#undef sigdelset
-#undef sigismember
-#undef sigaction
-#undef kill
-#undef getpid
 
-int getpid() { printf("STUB: getpid\n"); return 100; }
-int kill(pid_t pid, int sig) { printf("STUB: kill %d %d\n", (int)pid, sig); return 0; }
-int sigaction(int sig, const struct sigaction *act, struct sigaction *oact) { printf("STUB: sigaction %d\n", sig); return 0; }
-int sigemptyset(sigset_t *set) { printf("STUB: sigemptyset\n"); return 0; }
-
-int getuid() { printf("STUB: getuid\n"); return 0; }
-int getgid() { printf("STUB: getgid\n"); return 0; }
-int geteuid() { printf("STUB: geteuid\n"); return 0; }
-int getegid() { printf("STUB: getegid\n"); return 0; }
-int getppid() { printf("STUB: getppid\n"); return 1; }
+/* getpid, kill, sigaction, sigemptyset, getuid, getgid, geteuid, getegid, getppid are provided by the toolchain */
 int pipe(int fildes[2]) { printf("STUB: pipe\n"); errno = ENOSYS; return -1; }
 int fork() { printf("STUB: fork\n"); errno = ENOSYS; return -1; }
 int execv(const char *path, char *const argv[]) { printf("STUB: execv %s\n", path); errno = ENOSYS; return -1; }
