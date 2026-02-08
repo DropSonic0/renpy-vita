@@ -242,9 +242,17 @@ int main(int argc, char* argv[])
     /* Initialize PS3 stuff if needed */
     printf("Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
     fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
+        fflush(ps3_log_fp);
+    }
     Py_SetProgramName(app_program_path);
     printf("Ren'Py PS3: Py_SetProgramName done.\n");
     fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: Py_SetProgramName done.\n");
+        fflush(ps3_log_fp);
+    }
 #endif
 
     static struct _inittab builtins[] = {
@@ -443,6 +451,10 @@ int main(int argc, char* argv[])
         printf("Ren'Py PS3: malloc(1MB) FAILED.\n");
     }
     fflush(stdout);
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "Ren'Py PS3: malloc test done.\n");
+        fflush(ps3_log_fp);
+    }
 
     printf("Ren'Py PS3: Extending Inittab...\n");
     fflush(stdout);
@@ -450,20 +462,23 @@ int main(int argc, char* argv[])
         fprintf(ps3_log_fp, "Ren'Py PS3: Extending Inittab...\n");
         fflush(ps3_log_fp);
     }
-    PyImport_ExtendInittab(builtins);
+    /* Temporarily commented out to see if basic init works */
+    /* PyImport_ExtendInittab(builtins); */
 
-    printf("Ren'Py PS3: Initializing Python (Py_InitializeEx)...\n");
+    printf("Ren'Py PS3: Initializing Python (Py_Initialize)... \n");
     fflush(stdout);
     if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_InitializeEx)...\n");
+        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_Initialize)... \n");
         fflush(ps3_log_fp);
     }
-    Py_InitializeEx(0);
 
-    printf("Ren'Py PS3: Python Initialized.\n");
+    /* Try Py_Initialize instead of Py_InitializeEx(0) */
+    Py_Initialize();
+
+    printf("Ren'Py PS3: Python Initialized!\n");
     fflush(stdout);
     if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Python Initialized.\n");
+        fprintf(ps3_log_fp, "Ren'Py PS3: Python Initialized!\n");
         fflush(ps3_log_fp);
     }
 
