@@ -23,8 +23,8 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sysutil/sysutil.h>
 #include <unistd.h>
 
-/* Set process parameters: Priority 1001, 4MB stack size */
-SYS_PROCESS_PARAM(1001, 0x400000);
+/* Set process parameters: Priority 1001, 16MB stack size */
+SYS_PROCESS_PARAM(1001, 0x1000000);
 #endif
 
 #define MAX_PATH 256
@@ -160,7 +160,7 @@ int main(int argc, char* argv[])
     Py_OptimizeFlag = 0;
     Py_VerboseFlag = 2; /* Enable verbose logging for Python init */
     Py_HashRandomizationFlag = 0; /* Avoid hanging for entropy */
-    Py_InteractiveFlag = 1; /* Ensure we see output */
+    Py_InteractiveFlag = 0; /* No interactive terminal on PS3 */
 
 #ifdef __psp2__
     /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
