@@ -21,8 +21,8 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sys/memory.h>
 #include <sysutil/sysutil.h>
 
-/* Set process parameters: Priority 1001, 4MB stack size */
-SYS_PROCESS_PARAM(1001, 0x400000);
+/* Set process parameters: Priority 1001, 2MB stack size */
+SYS_PROCESS_PARAM(1001, 0x200000);
 #endif
 
 #define MAX_PATH 256
@@ -426,8 +426,9 @@ int main(int argc, char* argv[])
             }
             printf("Ren'Py PS3: Calling Py_SetPythonHome(%s)...\n", python_home_buffer);
             fflush(stdout);
-            Py_SetPythonHome(python_home_buffer);
-            printf("Ren'Py PS3: Py_SetPythonHome done.\n");
+            /* Temporarily use NULL to see if it avoids the hang */
+            Py_SetPythonHome(NULL);
+            printf("Ren'Py PS3: Py_SetPythonHome(NULL) done.\n");
             fflush(stdout);
             break;
         }
@@ -456,6 +457,9 @@ int main(int argc, char* argv[])
         fprintf(ps3_log_fp, "Ren'Py PS3: malloc test done.\n");
         fflush(ps3_log_fp);
     }
+
+    printf("Ren'Py PS3: Python Version: %s\n", Py_GetVersion());
+    fflush(stdout);
 
     printf("Ren'Py PS3: Extending Inittab...\n");
     fflush(stdout);
