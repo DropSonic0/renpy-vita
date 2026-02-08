@@ -9,6 +9,15 @@
 #include <lv2/sysfs.h>
 #include <sys/file.h>
 
+/* Undefine potential macros from signal.h that conflict with stubs */
+#undef sigemptyset
+#undef sigfillset
+#undef sigaddset
+#undef sigdelset
+#undef sigismember
+#undef sigaction
+#undef kill
+#undef getpid
 
 /* get* functions are declared in unistd.h but missing from libraries */
 uid_t getuid(void) { return 0; }
