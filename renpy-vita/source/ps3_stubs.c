@@ -18,6 +18,8 @@
 #undef sigaction
 #undef kill
 #undef getpid
+#undef stat
+#undef lstat
 
 /* get* functions are declared in unistd.h but missing from libraries */
 uid_t getuid(void) { return 0; }
@@ -46,60 +48,69 @@ int gethostname(char *name, size_t len) { printf("STUB: gethostname\n"); snprint
 long sysconf(int name) { printf("STUB: sysconf %d\n", name); return -1; }
 int isatty(int fd) { return 0; }
 
-int fstat(int fildes, struct stat *buf) { 
-    if (fildes >= 0 && fildes <= 2) {
+// Helper to map sysFSStat to struct stat
+static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
+    if (!buf || !lv2_st) return;
+    memset(buf, 0, sizeof(struct stat));
+    buf->st_mode = lv2_st->st_mode;
+    buf->st_uid = lv2_st->st_uid;
+    buf->st_gid = lv2_st->st_gid;
+    buf->st_atime = lv2_st->st_atime;
+    buf->st_mtime = lv2_st->st_mtime;
+    buf->st_ctime = lv2_st->st_ctime;
+    buf->st_size = lv2_st->st_size;
+    buf->st_blksize = 4096;
+    buf->st_nlink = 1;
+}
+
+int fstat(int fd, struct stat *buf) {
+    if (fd >= 0 && fd <= 2) {
         if (buf) {
             memset(buf, 0, sizeof(struct stat));
             buf->st_mode = 0020000 | 0666; // S_IFCHR
             buf->st_nlink = 1;
             buf->st_blksize = 4096;
         }
+        printf("fstat(%d) -> SUCCESS (Std Stream)\n", fd);
         return 0;
     }
-
     sysFSStat lv2_st;
     memset(&lv2_st, 0, sizeof(sysFSStat));
-    s32 res = sysLv2FsFStat(fildes, &lv2_st);
+    s32 res = sysLv2FsFStat(fd, &lv2_st);
 
-    // Also try to get size via Lseek as a backup/validation
-    u64 cur_pos = 0, end_pos = 0;
-    sysLv2FsLSeek64(fildes, 0, 1, &cur_pos); // SEEK_CUR
-    sysLv2FsLSeek64(fildes, 0, 2, &end_pos); // SEEK_END
-    sysLv2FsLSeek64(fildes, cur_pos, 0, &cur_pos); // SEEK_SET
+    u64 cur=0, end=0;
+    sysLv2FsLSeek64(fd, 0, 1, &cur);
+    sysLv2FsLSeek64(fd, 0, 2, &end);
+    sysLv2FsLSeek64(fd, cur, 0, &cur);
 
     if (res == 0) {
-        if (buf) {
-            memset(buf, 0, sizeof(struct stat));
-            buf->st_mode = lv2_st.st_mode;
-            // Use lseek size if it seems more plausible than the stat result
-            buf->st_size = (end_pos > 0) ? end_pos : lv2_st.st_size;
-            buf->st_atime = lv2_st.st_atime;
-            buf->st_mtime = lv2_st.st_mtime;
-            buf->st_ctime = lv2_st.st_ctime;
-            buf->st_blksize = 4096;
-            buf->st_nlink = 1;
-
-            printf("fstat(%d) -> size %lld (lseek %lld), mode %08x\n",
-                fildes, (long long)lv2_st.st_size, (long long)end_pos, (unsigned int)buf->st_mode);
-
-            // Hex dump for alignment debugging
-            unsigned char *p = (unsigned char *)&lv2_st;
-            printf("fstat(%d) struct: ", fildes);
-            for(int i=0; i<sizeof(sysFSStat); i++) printf("%02x ", p[i]);
-            printf("\n");
-        }
+        map_stat(buf, &lv2_st);
+        if (buf->st_size == 0 && end > 0) buf->st_size = end;
+        printf("fstat(%d) -> size %lld (lseek %lld), mode %08x\n", fd, (long long)buf->st_size, (long long)end, (unsigned int)buf->st_mode);
         return 0;
     }
-
-    // If it fails, return a dummy success to avoid crashing Python
+    // Fallback
     if (buf) {
         memset(buf, 0, sizeof(struct stat));
-        buf->st_mode = 0100000 | 0666; // S_IFREG
-        buf->st_size = (off_t)end_pos;
+        buf->st_mode = 0100000 | 0666;
+        buf->st_size = end;
     }
-    printf("fstat(%d) -> FALLBACK (actual error %08x, lseek size %lld)\n", fildes, (unsigned int)res, (long long)end_pos);
+    printf("fstat(%d) -> FALLBACK %08x, size %lld\n", fd, (unsigned int)res, (long long)end);
     return 0;
 }
+
+int stat(const char *path, struct stat *buf) {
+    sysFSStat lv2_st;
+    s32 res = sysLv2FsStat(path, &lv2_st);
+    if (res == 0) {
+        map_stat(buf, &lv2_st);
+        printf("stat(%s) -> size %lld, mode %08x\n", path, (long long)buf->st_size, (unsigned int)buf->st_mode);
+        return 0;
+    }
+    return -1;
+}
+
+int lstat(const char *path, struct stat *buf) { return stat(path, buf); }
 
 /* Stubs for popen/pclose if not available in PSL1GHT */
 FILE *popen(const char *command, const char *type) { printf("STUB: popen %s\n", command); return NULL; }

@@ -139,10 +139,10 @@ int main(int argc, char* argv[])
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 
-    printf("Ren'Py PS3: [V25-DEEP-TRACE] Main started\n");
+    printf("Ren'Py PS3: [V26-SYSCALL-TRACE] Main started\n");
     printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V25-TRACE] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V26-SYSCALLS] STARTING\n");
     printf("****************************************\n\n");
     fflush(stdout);
 #endif
@@ -397,6 +397,13 @@ int main(int argc, char* argv[])
             fflush(stdout);
             Py_SetPythonHome(python_home_buffer);
             printf("Ren'Py PS3: Py_SetPythonHome done.\n");
+
+    /* Also set explicit path to ensure zip is found */
+    char path_env[1024];
+    snprintf(path_env, sizeof(path_env), "%s/lib/python27.zip:%s", python_home_buffer, python_home_buffer);
+    printf("Ren'Py PS3: Calling Py_SetPath(%s)...\n", path_env);
+    Py_SetPath(path_env);
+
             fflush(stdout);
             break;
         }
