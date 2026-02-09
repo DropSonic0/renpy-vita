@@ -13,6 +13,8 @@
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/times.h>
+#include <pwd.h>
+#include <grp.h>
 
 /* Fallback for sigset_t if missing */
 #ifndef _SIGSET_T_DECLARED
@@ -43,7 +45,7 @@ void _log(const char *fmt, ...) {
     if (len > 0) {
         u64 written = 0;
         s32 res = sysLv2FsWrite(_log_fd, buf, (u64)len, &written);
-        if (res == 0) sysLv2FsFSync(_log_fd);
+        if (res == 0) sysLv2FsFsync(_log_fd);
     }
     _in_stub = 0;
 }
@@ -84,6 +86,12 @@ static s32 translate_open_flags(int flags) {
 #undef abort
 #undef gettimeofday
 #undef time
+#undef popen
+#undef pclose
+#undef getpwuid
+#undef getpwnam
+#undef getgrgid
+#undef getgrnam
 
 /* Identity Stubs */
 uid_t getuid(void) { _log("STUB: getuid\n"); return 0; }
@@ -129,7 +137,6 @@ void exit(int status) { _log("FATAL: exit(%d) called\n", status); while(1); }
 void _exit(int status) { _log("FATAL: _exit(%d) called\n", status); while(1); }
 void _Exit(int status) { _log("FATAL: _Exit(%d) called\n", status); while(1); }
 void abort(void) { _log("FATAL: abort() called\n"); while(1); }
-void __assert(const char *file, int line, const char *exp) { _log("ASSERT: %s at %s:%d\n", exp, file, line); while(1); }
 void __assert_fail(const char *a, const char *f, unsigned int l, const char *fn) { _log("ASSERT FAIL: %s at %s:%u in %s\n", a, f, l, fn); while(1); }
 
 /* Time Stubs */
@@ -156,9 +163,9 @@ static char sbrk_heap[256 * 1024];
 static size_t sbrk_ptr = 0;
 void *sbrk(intptr_t increment) {
     void *prev = (void *)-1;
-    if (sbrk_ptr + increment <= sizeof(sbrk_heap)) {
+    if (sbrk_ptr + (size_t)increment <= sizeof(sbrk_heap)) {
         prev = &sbrk_heap[sbrk_ptr];
-        sbrk_ptr += increment;
+        sbrk_ptr += (size_t)increment;
     }
     _log("STUB: sbrk(%ld) -> %p (used %zu/%zu)\n", (long)increment, prev, sbrk_ptr, sizeof(sbrk_heap));
     if (prev == (void*)-1) errno = ENOMEM;
@@ -244,7 +251,7 @@ ssize_t write(int fd, const void *buf, size_t count) {
         u64 w = 0;
         sysLv2FsWrite(_log_fd, "PY_OUT: ", 8, &w);
         sysLv2FsWrite(_log_fd, buf, (u64)count, &w);
-        sysLv2FsFSync(_log_fd);
+        sysLv2FsFsync(_log_fd);
         return (ssize_t)count;
     }
     int saved = _in_stub; _in_stub = 1;
@@ -287,7 +294,7 @@ char *getenv(const char *name) {
     return res;
 }
 
-/* NEWLIB REENTRANT VARIANTS - CRITICAL FOR PRECOMPILED LIBRARIES */
+/* NEWLIB REENTRANT VARIANTS */
 struct _reent;
 int _open_r(struct _reent *r, const char *p, int f, int m) { return open(p, f, m); }
 _ssize_t _read_r(struct _reent *r, int fd, void *b, size_t c) { return (_ssize_t)read(fd, b, c); }
@@ -297,7 +304,7 @@ int _close_r(struct _reent *r, int fd) { return close(fd); }
 int _fstat_r(struct _reent *r, int fd, struct stat *s) { return fstat(fd, s); }
 int _stat_r(struct _reent *r, const char *p, struct stat *s) { return stat(p, s); }
 
-/* Underscored aliases for other POSIX functions */
+/* Underscored aliases */
 int _stat(const char *p, struct stat *s) { return stat(p, s); }
 int _fstat(int fd, struct stat *s) { return fstat(fd, s); }
 int _open(const char *p, int f, ...) { va_list a; va_start(a, f); int m = va_arg(a, int); va_end(a); return open(p, f, m); }
@@ -305,6 +312,14 @@ ssize_t _read(int fd, void *b, size_t c) { return read(fd, b, c); }
 ssize_t _write(int fd, const void *b, size_t c) { return write(fd, b, c); }
 off_t _lseek(int fd, off_t o, int w) { return lseek(fd, o, w); }
 int _close(int fd) { return close(fd); }
+
+/* Missing standard functions for Python */
+__attribute__((visibility("default"))) FILE *popen(const char *command, const char *type) { _log("STUB: popen %s\n", command); return NULL; }
+__attribute__((visibility("default"))) int pclose(FILE *stream) { _log("STUB: pclose\n"); return -1; }
+__attribute__((visibility("default"))) struct passwd *getpwuid(uid_t uid) { _log("STUB: getpwuid %u\n", (unsigned int)uid); return NULL; }
+__attribute__((visibility("default"))) struct passwd *getpwnam(const char *name) { _log("STUB: getpwnam %s\n", name); return NULL; }
+__attribute__((visibility("default"))) struct group *getgrgid(gid_t gid) { _log("STUB: getgrgid %u\n", (unsigned int)gid); return NULL; }
+__attribute__((visibility("default"))) struct group *getgrnam(const char *name) { _log("STUB: getgrnam %s\n", name); return NULL; }
 
 /* Python/SDL_image stubs */
 void PyEval_InitThreads() { _log("STUB: PyEval_InitThreads\n"); }
