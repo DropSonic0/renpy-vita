@@ -38,18 +38,11 @@ PyMODINIT_FUNC initpygame_sdl2_display();
 PyMODINIT_FUNC initpygame_sdl2_draw();
 PyMODINIT_FUNC initpygame_sdl2_error();
 PyMODINIT_FUNC initpygame_sdl2_event();
-#if 0
-PyMODINIT_FUNC initpygame_sdl2_font();
-#endif
 PyMODINIT_FUNC initpygame_sdl2_gfxdraw();
 PyMODINIT_FUNC initpygame_sdl2_image();
 PyMODINIT_FUNC initpygame_sdl2_joystick();
 PyMODINIT_FUNC initpygame_sdl2_key();
 PyMODINIT_FUNC initpygame_sdl2_locals();
-#if 0
-PyMODINIT_FUNC initpygame_sdl2_mixer();
-PyMODINIT_FUNC initpygame_sdl2_mixer_music();
-#endif
 PyMODINIT_FUNC initpygame_sdl2_mouse();
 PyMODINIT_FUNC initpygame_sdl2_power();
 PyMODINIT_FUNC initpygame_sdl2_pygame_time();
@@ -100,25 +93,13 @@ PyMODINIT_FUNC initrenpy_uguu_gl();
 PyMODINIT_FUNC initrenpy_uguu_uguu();
 
 char app_dir_path[0x100];
-char res_1080_path[0x100];
-char res_720_path[0x100];
-char app_gles_module_path[0x100];
 char app_program_path[0x100];
-char relative_dir_path[0x400];
-char sysconfigdata_file_path[0x400];
 char python_home_buffer[0x400];
 char python_snprintf_buffer[0x400];
 char python_script_buffer[0x400];
-char python_error_buffer[0x400];
 char title_id[0xA];
 
-#ifdef __psp2__
-SceUID pid = -1;
-#endif
-
 #ifdef __PS3__
-typedef int SceUID;
-int pid = -1;
 extern void ps3_init_logger(s32 fd);
 extern void _log(const char *fmt, ...);
 #define printf _log
@@ -126,156 +107,55 @@ extern void _log(const char *fmt, ...);
 
 void show_error_and_exit(const char* message)
 {
-    Py_Finalize();
-#ifdef __PS3__
-    _log("ERROR: %s\n", message);
-#else
-    printf("ERROR: %s\n", message);
-#endif
-    fflush(stdout);
+    _log("FATAL ERROR: %s\n", message);
     Py_Exit(1);
 }
 
 int main(int argc, char* argv[])
 {
 #ifdef __PS3__
-    /* Try to create log file as early as possible using native syscalls */
     s32 log_fd = -1;
     s32 log_res = sysLv2FsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", SYS_O_WRONLY | SYS_O_CREAT | SYS_O_TRUNC, &log_fd, 0666, NULL, 0);
     if (log_res == 0) {
         ps3_init_logger(log_fd);
-        /* Also redirect FD 1 and 2 at the kernel level if possible */
-        dup2((int)log_fd, 1);
-        dup2((int)log_fd, 2);
-        setvbuf(stdout, NULL, _IONBF, 0);
-        setvbuf(stderr, NULL, _IONBF, 0);
     }
 
-    _log("Ren'Py PS3: [V34-FINAL] Main started\n");
-    _log("Ren'Py PS3: stdout and stderr redirected to log.txt (Native FD: %d)\n", (int)log_fd);
     _log("\n\n****************************************\n");
-    _log("Ren'Py PS3: [BUILD V34-FINAL] STARTING\n");
+    _log("Ren'Py PS3: [BUILD V35-RECURSION-FIX] STARTING\n");
     _log("****************************************\n\n");
-#endif
-
-#ifdef __psp2__
-    PVRSRV_PSP2_APPHINT hint;
-    SceUID fd = -1;
-    SceBool override = SCE_FALSE;
-    char target_path[MAX_PATH];
+    _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif
 
     Py_NoSiteFlag = 1;
-    Py_IgnoreEnvironmentFlag = 0; /* Let it use PYTHONPATH */
+    Py_IgnoreEnvironmentFlag = 0;
     Py_NoUserSiteDirectory = 1;
     Py_OptimizeFlag = 0;
-    Py_VerboseFlag = 2; /* Enable verbose logging for Python init */
-    Py_HashRandomizationFlag = 0; /* Avoid hanging for entropy */
-    Py_InteractiveFlag = 0; /* No interactive terminal on PS3 */
-
-#ifdef __psp2__
-    /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
-    scePowerSetArmClockFrequency(444);
-    /* Ren'Py requires full RW access */
-    sceAppMgrUmount("app0:");
-
-    /* Because locations can be all over the place, get TITLEID to find the application directory */
-    pid = sceKernelGetProcessId();
-    sceAppMgrAppParamGetString(pid, 12, title_id, sizeof(title_id));
-
-    /* Generate full path to application directory and set relative paths */
-    snprintf(app_dir_path, sizeof(app_dir_path), "ux0:app/%s", title_id);
-    snprintf(res_1080_path, sizeof(res_1080_path), "%s/1080", app_dir_path);
-    snprintf(res_720_path, sizeof(res_720_path), "%s/720", app_dir_path);
-    snprintf(app_gles_module_path, sizeof(app_gles_module_path), "%s/module", app_dir_path);
-    snprintf(app_program_path, sizeof(app_program_path), "%s/eboot.bin", app_dir_path);
-
-    /* Disable Back Touchpad to prevent "misclicks" */
-    SDL_setenv("VITA_DISABLE_TOUCH_BACK", "1", 1);
-
-    /* Check Custom Resolutions */
-    /* Alllow 1080i and 720p support on both PSTV and Vita if wanted (Needs Sharpscale) */
-    if (fd = sceIoOpen(res_1080_path, SCE_O_RDONLY, 0777) > 0) {
-        sceIoClose(fd);
-        override = SCE_TRUE;
-        /* This actually needs it for both systems,
-         * so just set it here for the vita */
-        scePowerSetGpuClockFrequency(222); 
-        SDL_setenv("VITA_RESOLUTION", "1080", 1);
-    }
-    else if (fd = sceIoOpen(res_720_path, SCE_O_RDONLY, 0777) > 0) {
-        sceIoClose(fd);
-        override = SCE_TRUE;
-        /* Vita doesn't really need it, but could help */
-        scePowerSetGpuClockFrequency(166);
-        SDL_setenv("VITA_RESOLUTION", "720", 1);
-    }
-    /* At least Set 720p for PSTV and force 222MHz GPU since it's running on AC anyway */
-    if (vshSblAimgrIsDolce()) {
-        scePowerSetGpuClockFrequency(222);
-        if (!override)
-            SDL_setenv("VITA_RESOLUTION", "720", 1);
-    }
-
-    /* We need to use some custom hints */
-    SDL_setenv("VITA_PVR_SKIP_INIT", "yeet", 1);
-
-    /* Load Modules */
-    sceKernelLoadStartModule("vs0:sys/external/libfios2.suprx", 0, NULL, 0, NULL, NULL);
-    sceKernelLoadStartModule("vs0:sys/external/libc.suprx", 0, NULL, 0, NULL, NULL);
-    snprintf(target_path, MAX_PATH, "%s/%s", app_gles_module_path, "libgpu_es4_ext.suprx");
-    sceKernelLoadStartModule(target_path, 0, NULL, 0, NULL, NULL);
-    snprintf(target_path, MAX_PATH, "%s/%s", app_gles_module_path, "libIMGEGL.suprx");
-    sceKernelLoadStartModule(target_path, 0, NULL, 0, NULL, NULL);
-
-    /* Set PVR Hints */
-    PVRSRVInitializeAppHint(&hint);
-    snprintf(hint.szGLES1, MAX_PATH, "%s/%s", app_gles_module_path, "libGLESv1_CM.suprx");
-    snprintf(hint.szGLES2, MAX_PATH, "%s/%s", app_gles_module_path, "libGLESv2.suprx");
-    snprintf(hint.szWindowSystem, MAX_PATH, "%s/%s", app_gles_module_path, "libpvrPSP2_WSEGL.suprx");
-    hint.ui32SwTexOpCleanupDelay = 16000; // Set to 16 milliseconds to prevent a pool of unfreed memory
-    PVRSRVCreateVirtualAppHint(&hint);
-
-    /* Now let's start the Ren'Py Process */
-    Py_SetProgramName(app_program_path);
-#endif
+    Py_VerboseFlag = 2;
+    Py_HashRandomizationFlag = 0;
+    Py_InteractiveFlag = 0;
 
 #ifdef __PS3__
-    /* PS3 Paths */
     strncpy(title_id, "RENPY0001", sizeof(title_id));
     title_id[sizeof(title_id) - 1] = '\0';
     snprintf(app_dir_path, sizeof(app_dir_path), "/dev_hdd0/game/%s/USRDIR", title_id);
     snprintf(app_program_path, sizeof(app_program_path), "%s/EBOOT.BIN", app_dir_path);
 
     _log("Ren'Py PS3: App dir path: %s\n", app_dir_path);
-
-    /* Initialize PS3 stuff if needed */
-    _log("Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
-
     Py_SetProgramName(app_program_path);
-    _log("Ren'Py PS3: Py_SetProgramName done.\n");
 #endif
 
     static struct _inittab builtins[] = {
-
         {"pygame_sdl2.color", initpygame_sdl2_color},
         {"pygame_sdl2.controller", initpygame_sdl2_controller},
         {"pygame_sdl2.display", initpygame_sdl2_display},
         {"pygame_sdl2.draw", initpygame_sdl2_draw},
         {"pygame_sdl2.error", initpygame_sdl2_error},
         {"pygame_sdl2.event", initpygame_sdl2_event},
-#if 0
-        {"pygame_sdl2.font", initpygame_sdl2_font},
-#endif
         {"pygame_sdl2.gfxdraw", initpygame_sdl2_gfxdraw},
         {"pygame_sdl2.image", initpygame_sdl2_image},
         {"pygame_sdl2.joystick", initpygame_sdl2_joystick},
         {"pygame_sdl2.key", initpygame_sdl2_key},
         {"pygame_sdl2.locals", initpygame_sdl2_locals},
-#if 0
-        {"pygame_sdl2.mixer", initpygame_sdl2_mixer},
-        {"pygame_sdl2.mixer_music", initpygame_sdl2_mixer_music},
-#endif
         {"pygame_sdl2.mouse", initpygame_sdl2_mouse},
         {"pygame_sdl2.power", initpygame_sdl2_power},
         {"pygame_sdl2.pygame_time", initpygame_sdl2_pygame_time},
@@ -324,177 +204,81 @@ int main(int argc, char* argv[])
         {"renpy.text.texwrap", initrenpy_text_texwrap},
         {"renpy.uguu.gl", initrenpy_uguu_gl},
         {"renpy.uguu.uguu", initrenpy_uguu_uguu},
-
         {NULL, NULL}
     };
 
-#ifdef __PS3__
-    /* getcwd might not be available or reliable on PS3 */
-    memset(relative_dir_path, 0, sizeof(relative_dir_path));
-    _log("Ren'Py PS3: Searching for data files...\n");
-#else
-    getcwd(relative_dir_path, sizeof(relative_dir_path));
-#endif
-
     char* dir_paths[] = {
         app_dir_path,
-#ifdef __PS3__
         "/app_home",
-#endif
-#ifndef __PS3__
-        relative_dir_path,
-#endif
         NULL,
     };
 
     int found_sysconfigdata = 0;
     int found_renpy = 0;
+    char python_zip_full_path[512];
 
-    for (int i = 0; i < sizeof(dir_paths) / sizeof(char*); i += 1)
+    for (int i = 0; dir_paths[i] != NULL; i++)
     {
-        if (dir_paths[i] == NULL)
-        {
-            break;
-        }
-        if (strlen(dir_paths[i]) == 0)
-        {
-            continue;
-        }
         _log("Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
-
-        /* Check for python27.zip in /lib/ or root */
-        const char* python_zip_subpaths[] = {"/lib/python27.zip", "/python27.zip"};
-        for (int j = 0; j < 2; j++) {
-            snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_zip_subpaths[j]);
-            struct stat st;
-            if (stat(sysconfigdata_file_path, &st) == 0) {
-                _log("Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
-                found_sysconfigdata = 1;
-                strncpy(python_home_buffer, dir_paths[i], sizeof(python_home_buffer));
-                python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
+        snprintf(python_zip_full_path, sizeof(python_zip_full_path), "%s/lib/python27.zip", dir_paths[i]);
+        struct stat st;
+        if (stat(python_zip_full_path, &st) == 0) {
+            _log("Ren'Py PS3: Found python27.zip at %s\n", python_zip_full_path);
+            found_sysconfigdata = 1;
+            strncpy(python_home_buffer, dir_paths[i], sizeof(python_home_buffer));
+            python_home_buffer[sizeof(python_home_buffer)-1] = '\0';
+            
+            snprintf(python_script_buffer, sizeof(python_script_buffer), "%s/renpy.py", dir_paths[i]);
+            if (stat(python_script_buffer, &st) == 0) {
+                _log("Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
+                found_renpy = 1;
                 break;
-            } else {
-                _log("Ren'Py PS3: python27.zip NOT found at %s\n", sysconfigdata_file_path);
             }
         }
-
-        snprintf(python_script_buffer, sizeof(python_script_buffer), "%s/renpy.py", dir_paths[i]);
-        FILE* renpy_file = fopen((const char*)python_script_buffer, "rb");
-        if (renpy_file != NULL)
-        {
-            _log("Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
-            found_renpy = 1;
-            fclose(renpy_file);
-        } else {
-            _log("Ren'Py PS3: renpy.py NOT found at %s\n", python_script_buffer);
-        }
-
-        if (found_sysconfigdata == 1 && found_renpy == 1)
-        {
-            /* Use the directory containing python27.zip as Home, not the zip itself */
-            strncpy(python_home_buffer, dir_paths[i], sizeof(python_home_buffer));
-            python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
-
-            /* sys.path will include the zip file and the search directory */
-            snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s', '%s']", sysconfigdata_file_path, dir_paths[i]);
-            
-            _log("Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
-            _log("Ren'Py PS3: Calling Py_SetPythonHome(%s)...\n", python_home_buffer);
-            Py_SetPythonHome(python_home_buffer);
-            _log("Ren'Py PS3: Py_SetPythonHome done.\n");
-
-            /* Also set explicit path via PYTHONPATH to ensure zip is found */
-            char path_env[1024];
-            snprintf(path_env, sizeof(path_env), "%s/lib/python27.zip:%s", python_home_buffer, python_home_buffer);
-            _log("Ren'Py PS3: Setting PYTHONPATH to %s\n", path_env);
-            SDL_setenv("PYTHONPATH", path_env, 1);
-            break;
-        }
     }
 
-    if (found_sysconfigdata == 0)
-    {
-        show_error_and_exit("Could not find python27.zip.\n");
+    if (!found_sysconfigdata || !found_renpy) {
+        show_error_and_exit("Could not find Ren'Py data files.");
     }
 
-    if (found_renpy == 0)
-    {
-        show_error_and_exit("Could not find renpy.py.\n");
-    }
+    _log("Ren'Py PS3: Setting Home to %s\n", python_home_buffer);
+    Py_SetPythonHome(python_home_buffer);
 
-    _log("Ren'Py PS3: Testing malloc...\n");
-    void* test_mem = malloc(1024 * 1024);
-    if (test_mem) {
-        _log("Ren'Py PS3: malloc(1MB) success.\n");
-        free(test_mem);
-    } else {
-        _log("Ren'Py PS3: malloc(1MB) FAILED.\n");
-    }
-    _log("Ren'Py PS3: malloc test done.\n");
+    char path_env[1024];
+    snprintf(path_env, sizeof(path_env), "%s/lib/python27.zip:%s", python_home_buffer, python_home_buffer);
+    _log("Ren'Py PS3: Setting PYTHONPATH to %s\n", path_env);
+    SDL_setenv("PYTHONPATH", path_env, 1);
+    SDL_setenv("PYTHONHOME", python_home_buffer, 1);
 
     _log("Ren'Py PS3: Python Version: %s\n", Py_GetVersion());
 
     _log("Ren'Py PS3: Extending Inittab...\n");
-
-    /* Restore Inittab extension */
     PyImport_ExtendInittab(builtins);
 
-    _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
-    
-    /* Use Py_InitializeEx(0) to disable signal handlers */
+    _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))...\n");
     Py_InitializeEx(0);
-
     _log("Ren'Py PS3: Python Initialized!\n");
 
-    char* pyargs[] = {
-        python_script_buffer,
-        app_dir_path,
-        NULL,
-    };
-
+    char* pyargs[] = { python_script_buffer, app_dir_path, NULL };
     PySys_SetArgvEx(2, pyargs, 1);
 
-    int python_result;
+    snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s', '%s']", python_zip_full_path, python_home_buffer);
+    _log("Ren'Py PS3: Running path setup script...\n");
+    PyRun_SimpleString(python_snprintf_buffer);
 
-    python_result = PyRun_SimpleString(python_snprintf_buffer);
+    _log("Ren'Py PS3: Importing basic modules...\n");
+    PyRun_SimpleString("import os, pygame_sdl2, encodings\nprint 'Basic modules imported'\n");
 
-    if (python_result == -1)
-    {
-        show_error_and_exit("Could not set the Python path.\n\nThis is an internal error and should not occur during normal usage.");
+    _log("Ren'Py PS3: Opening renpy.py for execution...\n");
+    FILE* fp = fopen(python_script_buffer, "rb");
+    if (fp) {
+        _log("Ren'Py PS3: Executing renpy.py...\n");
+        int res = PyRun_SimpleFileEx(fp, python_script_buffer, 1);
+        _log("Ren'Py PS3: Execution result: %d\n", res);
+    } else {
+        show_error_and_exit("Failed to open renpy.py");
     }
 
-#define x(lib) \
-    { \
-        if (PyRun_SimpleString("import " lib) == -1) \
-        { \
-            show_error_and_exit("Could not import python library " lib ".\n"); \
-        } \
-    }
-
-    x("os");
-    x("pygame_sdl2");
-    x("encodings");
-
-#undef x
-
-    FILE* renpy_file = fopen((const char*)python_script_buffer, "rb");
-    if (renpy_file == NULL)
-    {
-        show_error_and_exit("Could not open renpy.py after Python initialization.\n\nThis is an internal error and should not occur during normal usage.");
-    }
-    else
-    {
-        /* This is where the fun begins */
-        _log("Ren'Py PS3: Running renpy.py...\n");
-        python_result = PyRun_SimpleFileEx(renpy_file, (const char*)python_script_buffer, 1);
-    }
-
-    if (python_result == -1)
-    {
-        show_error_and_exit("An uncaught Python exception occurred during renpy.py execution.\n");
-    }
-
-    _log("Ren'Py PS3: Execution finished with result %d\n", python_result);
     Py_Exit(0);
     return 0;
 }
