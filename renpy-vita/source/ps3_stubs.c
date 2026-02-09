@@ -178,6 +178,7 @@ USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
     return (ssize_t)written;
 }
 
+extern int __real_close(int fd);
 USED VISIBLE int __wrap_close(int fd) {
     if (fd >= 0 && fd <= 2) return 0;
     s32 res = sysLv2FsClose((s32)fd);
@@ -243,14 +244,29 @@ USED VISIBLE int __wrap_lstat(const char *path, struct stat *buf) {
 /* Identity and signals */
 USED VISIBLE uid_t getuid(void) { return 0; }
 USED VISIBLE gid_t getgid(void) { return 0; }
+USED VISIBLE uid_t geteuid(void) { return 0; }
+USED VISIBLE gid_t getegid(void) { return 0; }
+USED VISIBLE pid_t getppid(void) { return 1; }
 USED VISIBLE pid_t getpid(void) { return 100; }
 USED VISIBLE int isatty(int fd) { return (fd >= 0 && fd <= 2); }
+
+/* Other POSIX symbols missing from toolchain */
+USED VISIBLE int pipe(int fildes[2]) { _log("STUB: pipe\n"); errno = ENOSYS; return -1; }
+USED VISIBLE int symlink(const char *path1, const char *path2) { _log("STUB: symlink\n"); errno = EROFS; return -1; }
+USED VISIBLE int fdatasync(int fildes) { return 0; }
+USED VISIBLE char *ttyname(int fd) { return NULL; }
+USED VISIBLE int execv(const char *path, char *const argv[]) { _log("STUB: execv %s\n", path); errno = ENOSYS; return -1; }
+USED VISIBLE int readlink(const char *path, char *buf, size_t bufsiz) { return -1; }
+USED VISIBLE int gethostname(char *name, size_t len) { snprintf(name, len, "ps3"); return 0; }
+USED VISIBLE long sysconf(int name) { return -1; }
 
 /* Missing Python symbols */
 USED VISIBLE FILE *popen(const char *command, const char *type) { _log("STUB: popen %s\n", command); return NULL; }
 USED VISIBLE int pclose(FILE *stream) { return -1; }
 USED VISIBLE struct passwd *getpwuid(uid_t uid) { return NULL; }
 USED VISIBLE struct passwd *getpwnam(const char *name) { return NULL; }
+USED VISIBLE struct group *getgrgid(gid_t gid) { return NULL; }
+USED VISIBLE struct group *getgrnam(const char *name) { return NULL; }
 
 /* Python internal overrides - be careful! */
 void PyEval_InitThreads() { _log("STUB: PyEval_InitThreads (potential GIL issues)\n"); }
