@@ -129,7 +129,7 @@ void __assert_fail(const char *assertion, const char *file, unsigned int line, c
 }
 
 /* Time Stubs */
-int gettimeofday(struct timeval *tv, struct timezone *tz) {
+int gettimeofday(struct timeval *tv, void *tz) {
     _log("STUB: gettimeofday\n");
     if (tv) { tv->tv_sec = 1600000000; tv->tv_usec = 0; }
     return 0;
