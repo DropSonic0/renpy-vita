@@ -142,10 +142,10 @@ int main(int argc, char* argv[])
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 
-    printf("Ren'Py PS3: [V29-HDR-SYNC] Main started\n");
+    printf("Ren'Py PS3: [V30-HDR-FIX] Main started\n");
     printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V29-HDR-SYNC] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V30-HDR-FIX] STARTING\n");
     printf("****************************************\n\n");
     printf("Ren'Py PS3: fileno(stdout) = %d, fileno(stderr) = %d\n", fileno(stdout), fileno(stderr));
     fflush(stdout);

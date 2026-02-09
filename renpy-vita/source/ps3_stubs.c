@@ -12,7 +12,6 @@
 #include <fcntl.h>
 #include <sys/select.h>
 #include <sys/time.h>
-#include <sys/ioctl.h>
 
 static int _in_stub = 0;
 static void _log(const char *fmt, ...) {
