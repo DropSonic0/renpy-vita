@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
     }
 
     _log("\n\n****************************************\n");
-    _log("Ren'Py PS3: [BUILD V41-TRACE-ALL] STARTING\n");
+    _log("Ren'Py PS3: [BUILD V42.1-TRACE-FIX] STARTING\n");
     _log("****************************************\n\n");
     _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif
