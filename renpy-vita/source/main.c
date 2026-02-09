@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
     }
 
     _log("\n\n****************************************\n");
-    _log("Ren'Py PS3: [BUILD V37.1-MAX-LOG] STARTING\n");
+    _log("Ren'Py PS3: [BUILD V38-REENT-LOG] STARTING\n");
     _log("****************************************\n\n");
     _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif
@@ -259,6 +259,7 @@ int main(int argc, char* argv[])
     PyImport_ExtendInittab(builtins);
 
     _log("Ren'Py PS3: Pre-Initialize Check...\n");
+    _log("Ren'Py PS3: Heartbeat before Py_InitializeEx(0)\n");
     _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))...\n");
     Py_InitializeEx(0);
     _log("Ren'Py PS3: Python Initialized successfully!\n");
