@@ -302,7 +302,6 @@ ssize_t write(int fd, const void *buf, size_t count) {
         return (ssize_t)written;
     }
 
-    int log_it = !_in_stub;
     int saved_in_stub = _in_stub;
     _in_stub = 1;
 
@@ -363,23 +362,6 @@ int ioctl(int fd, unsigned long request, ...) {
 
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
     return 0;
-}
-
-char *setlocale(int category, const char *locale) {
-    return "C";
-}
-
-typedef void (*sighandler_t)(int);
-sighandler_t signal(int signum, sighandler_t handler) {
-    return NULL;
-}
-
-char *getcwd(char *buf, size_t size) {
-    if (buf && size > 30) {
-        strcpy(buf, "/dev_hdd0/game/RENPY0001/USRDIR");
-        return buf;
-    }
-    return NULL;
 }
 
 char *getenv(const char *name) {
