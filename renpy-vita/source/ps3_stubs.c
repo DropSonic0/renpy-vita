@@ -10,6 +10,8 @@
 #include <sys/file.h>
 #include <stdarg.h>
 #include <fcntl.h>
+#include <sys/select.h>
+#include <sys/time.h>
 
 static int _in_stub = 0;
 static void _log(const char *fmt, ...) {
@@ -77,16 +79,6 @@ static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
 }
 
 int fstat(int fd, struct stat *buf) {
-    if (fd >= 0 && fd <= 2) {
-        if (buf) {
-            memset(buf, 0, sizeof(struct stat));
-            buf->st_mode = 0020000 | 0666; // S_IFCHR
-            buf->st_nlink = 1;
-            buf->st_blksize = 4096;
-        }
-        _log("STUB: fstat(%d) -> SUCCESS (Std Stream)\n", fd);
-        return 0;
-    }
     sysFSStat lv2_st;
     memset(&lv2_st, 0, sizeof(sysFSStat));
     s32 res = sysLv2FsFStat(fd, &lv2_st);
@@ -99,16 +91,28 @@ int fstat(int fd, struct stat *buf) {
     if (res == 0) {
         map_stat(buf, &lv2_st);
         if (buf->st_size == 0 && end > 0) buf->st_size = end;
-        _log("STUB: fstat(%d) -> size %lld (lseek %lld), mode %08x\n", fd, (long long)buf->st_size, (long long)end, (unsigned int)buf->st_mode);
+        _log("STUB: fstat(%d) -> size %lld, mode %x\n", fd, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
+
+    if (fd >= 0 && fd <= 2) {
+        if (buf) {
+            memset(buf, 0, sizeof(struct stat));
+            buf->st_mode = 0020000 | 0666; // S_IFCHR
+            buf->st_nlink = 1;
+            buf->st_blksize = 4096;
+        }
+        _log("STUB: fstat(%d) -> SUCCESS (Std Stream Fake)\n", fd);
+        return 0;
+    }
+
     // Fallback
     if (buf) {
         memset(buf, 0, sizeof(struct stat));
         buf->st_mode = 0100000 | 0666;
         buf->st_size = end;
     }
-    _log("STUB: fstat(%d) -> FALLBACK %08x, size %lld\n", fd, (unsigned int)res, (long long)end);
+    _log("STUB: fstat(%d) -> FALLBACK %x, size %lld\n", fd, (unsigned int)res, (long long)end);
     return 0;
 }
 
@@ -117,9 +121,10 @@ int stat(const char *path, struct stat *buf) {
     s32 res = sysLv2FsStat(path, &lv2_st);
     if (res == 0) {
         map_stat(buf, &lv2_st);
-        _log("STUB: stat(%s) -> size %lld, mode %08x\n", path, (long long)buf->st_size, (unsigned int)buf->st_mode);
+        _log("STUB: stat(%s) -> size %lld, mode %x\n", path, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
+    _log("STUB: stat(%s) -> FAIL %x\n", path, (unsigned int)res);
     return -1;
 }
 
@@ -140,6 +145,63 @@ int open(const char *path, int flags, ...) {
     if (res == 0) return (int)fd;
     errno = (int)res;
     return -1;
+}
+
+#undef read
+ssize_t read(int fd, void *buf, size_t count) {
+    if (fd == 0) {
+        // stdin: return EOF to avoid blocking
+        return 0;
+    }
+    u64 read_bytes = 0;
+    s32 res = sysLv2FsRead(fd, buf, count, &read_bytes);
+    if (res != 0) {
+        _log("STUB: read(%d, %zu) -> FAIL %x\n", fd, count, (unsigned int)res);
+        errno = (int)res;
+        return -1;
+    }
+    // Only log small reads or zip reads to avoid log spam
+    if (count < 1024) {
+        // _log("STUB: read(%d, %zu) -> %llu\n", fd, count, read_bytes);
+    }
+    return (ssize_t)read_bytes;
+}
+
+#undef write
+ssize_t write(int fd, const void *buf, size_t count) {
+    u64 written = 0;
+    s32 res = sysLv2FsWrite(fd, buf, count, &written);
+    if (res != 0) {
+        // Can't log here if it's the log file failing
+        errno = (int)res;
+        return -1;
+    }
+    return (ssize_t)written;
+}
+
+#undef lseek
+off_t lseek(int fd, off_t offset, int whence) {
+    u64 pos = 0;
+    s32 res = sysLv2FsLSeek64(fd, (u64)offset, whence, &pos);
+    if (res == 0) return (off_t)pos;
+    _log("STUB: lseek(%d, %lld, %d) -> FAIL %x\n", fd, (long long)offset, whence, (unsigned int)res);
+    errno = (int)res;
+    return -1;
+}
+
+#undef select
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+    _log("STUB: select(%d)\n", nfds);
+    return 0;
+}
+
+#undef getenv
+char *getenv(const char *name) {
+    // SDL_getenv should work, but let's log it
+    extern char *SDL_getenv(const char *);
+    char *res = SDL_getenv(name);
+    _log("STUB: getenv(%s) -> %s\n", name, res ? res : "NULL");
+    return res;
 }
 
 #undef close
