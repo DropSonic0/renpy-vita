@@ -118,10 +118,12 @@ int main(int argc, char* argv[])
     s32 log_res = sysLv2FsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", SYS_O_WRONLY | SYS_O_CREAT | SYS_O_TRUNC, &log_fd, 0666, NULL, 0);
     if (log_res == 0) {
         ps3_init_logger(log_fd);
+        setvbuf(stdout, NULL, _IONBF, 0);
+        setvbuf(stderr, NULL, _IONBF, 0);
     }
 
     _log("\n\n****************************************\n");
-    _log("Ren'Py PS3: [BUILD V35-RECURSION-FIX] STARTING\n");
+    _log("Ren'Py PS3: [BUILD V36-64BIT-STUBS] STARTING\n");
     _log("****************************************\n\n");
     _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif

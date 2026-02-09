@@ -78,6 +78,8 @@ static s32 translate_open_flags(int flags) {
 #undef lseek
 #undef fcntl
 #undef ioctl
+#undef exit
+#undef abort
 
 /* get* functions */
 uid_t getuid(void) { return 0; }
@@ -104,7 +106,25 @@ char *ttyname(int fd) { _log("STUB: ttyname %d\n", fd); return NULL; }
 int readlink(const char *path, char *buf, size_t bufsiz) { _log("STUB: readlink %s\n", path); errno = ENOSYS; return -1; }
 int gethostname(char *name, size_t len) { snprintf(name, len, "ps3"); return 0; }
 long sysconf(int name) { return -1; }
-int isatty(int fd) { return 0; }
+int isatty(int fd) {
+    if (fd >= 0 && fd <= 2) return 1;
+    return 0;
+}
+
+void exit(int status) {
+    _log("FATAL: exit(%d) called\n", status);
+    while(1);
+}
+
+void _exit(int status) {
+    _log("FATAL: _exit(%d) called\n", status);
+    while(1);
+}
+
+void abort(void) {
+    _log("FATAL: abort() called\n");
+    while(1);
+}
 
 void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function) {
     _log("ASSERT FAIL: %s at %s:%u in %s\n", assertion, file, line, function);
@@ -125,6 +145,11 @@ static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
     buf->st_nlink = 1;
     buf->st_blocks = (buf->st_size + 511) / 512;
 }
+
+int fstat(int fd, struct stat *buf);
+int fstat64(int fd, struct stat *buf) { return fstat(fd, buf); }
+int _fstat(int fd, struct stat *buf) { return fstat(fd, buf); }
+int _fstat64(int fd, struct stat *buf) { return fstat(fd, buf); }
 
 int fstat(int fd, struct stat *buf) {
     int log_it = !_in_stub;
@@ -182,6 +207,11 @@ end:
     return res_ret;
 }
 
+int stat(const char *path, struct stat *buf);
+int stat64(const char *path, struct stat *buf) { return stat(path, buf); }
+int _stat(const char *path, struct stat *buf) { return stat(path, buf); }
+int _stat64(const char *path, struct stat *buf) { return stat(path, buf); }
+
 int stat(const char *path, struct stat *buf) {
     int log_it = !_in_stub;
     int saved_in_stub = _in_stub;
@@ -201,6 +231,25 @@ int stat(const char *path, struct stat *buf) {
 }
 
 int lstat(const char *path, struct stat *buf) { return stat(path, buf); }
+int lstat64(const char *path, struct stat *buf) { return stat(path, buf); }
+int _lstat(const char *path, struct stat *buf) { return stat(path, buf); }
+int _lstat64(const char *path, struct stat *buf) { return stat(path, buf); }
+
+int open(const char *path, int flags, ...);
+int open64(const char *path, int flags, ...) {
+    va_list args;
+    va_start(args, flags);
+    int mode = va_arg(args, int);
+    va_end(args);
+    return open(path, flags, mode);
+}
+int _open(const char *path, int flags, ...) {
+    va_list args;
+    va_start(args, flags);
+    int mode = va_arg(args, int);
+    va_end(args);
+    return open(path, flags, mode);
+}
 
 int open(const char *path, int flags, ...) {
     int log_it = !_in_stub;
@@ -226,6 +275,7 @@ int open(const char *path, int flags, ...) {
     return -1;
 }
 
+ssize_t _read(int fd, void *buf, size_t count) { return read(fd, buf, count); }
 ssize_t read(int fd, void *buf, size_t count) {
     if (fd == 0) return 0;
     int log_it = !_in_stub;
@@ -244,6 +294,7 @@ ssize_t read(int fd, void *buf, size_t count) {
     return (ssize_t)read_bytes;
 }
 
+ssize_t _write(int fd, const void *buf, size_t count) { return write(fd, buf, count); }
 ssize_t write(int fd, const void *buf, size_t count) {
     if ((fd == 1 || fd == 2) && _log_fd >= 0) {
         u64 written = 0;
@@ -266,6 +317,11 @@ ssize_t write(int fd, const void *buf, size_t count) {
     return (ssize_t)written;
 }
 
+off_t lseek(int fd, off_t offset, int whence);
+off_t lseek64(int fd, off_t offset, int whence) { return lseek(fd, offset, whence); }
+off_t _lseek(int fd, off_t offset, int whence) { return lseek(fd, offset, whence); }
+off_t _lseek64(int fd, off_t offset, int whence) { return lseek(fd, offset, whence); }
+
 off_t lseek(int fd, off_t offset, int whence) {
     int log_it = !_in_stub;
     int saved_in_stub = _in_stub;
@@ -281,6 +337,7 @@ off_t lseek(int fd, off_t offset, int whence) {
     return -1;
 }
 
+int _close(int fd) { return close(fd); }
 int close(int fd) {
     if (fd >= 0 && fd <= 2) return 0;
     int log_it = !_in_stub;
@@ -306,6 +363,23 @@ int ioctl(int fd, unsigned long request, ...) {
 
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
     return 0;
+}
+
+char *setlocale(int category, const char *locale) {
+    return "C";
+}
+
+typedef void (*sighandler_t)(int);
+sighandler_t signal(int signum, sighandler_t handler) {
+    return NULL;
+}
+
+char *getcwd(char *buf, size_t size) {
+    if (buf && size > 30) {
+        strcpy(buf, "/dev_hdd0/game/RENPY0001/USRDIR");
+        return buf;
+    }
+    return NULL;
 }
 
 char *getenv(const char *name) {
