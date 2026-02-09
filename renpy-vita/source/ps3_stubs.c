@@ -13,6 +13,11 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+/* Fallback for sigset_t if missing */
+#ifndef _SIGSET_T_DECLARED
+typedef uint64_t sigset_t;
+#endif
+
 /* Logger using direct PS3 syscalls to avoid recursion */
 static s32 _log_fd = -1;
 static int _in_stub = 0;
@@ -34,6 +39,23 @@ void _log(const char *fmt, ...) {
         sysLv2FsWrite(_log_fd, buf, (u64)len, &written);
     }
     _in_stub = 0;
+}
+
+/* Map POSIX open flags to PS3 native flags */
+static s32 translate_open_flags(int flags) {
+    s32 out = 0;
+    /* Access modes */
+    if ((flags & O_ACCMODE) == O_RDONLY) out |= SYS_O_RDONLY;
+    if ((flags & O_ACCMODE) == O_WRONLY) out |= SYS_O_WRONLY;
+    if ((flags & O_ACCMODE) == O_RDWR)   out |= SYS_O_RDWR;
+
+    /* Other flags */
+    if (flags & O_CREAT)  out |= SYS_O_CREAT;
+    if (flags & O_EXCL)   out |= SYS_O_EXCL;
+    if (flags & O_TRUNC)  out |= SYS_O_TRUNC;
+    if (flags & O_APPEND) out |= SYS_O_APPEND;
+
+    return out;
 }
 
 /* Undefine potential macros from signal.h that conflict with stubs */
@@ -168,11 +190,19 @@ int open(const char *path, int flags, ...) {
     if (_in_stub) return -1;
     _in_stub = 1;
     s32 fd = -1;
-    /* Map flags if necessary, but for now we assume they match or PS3 uses them directly.
-       Using 5-argument version from sysfs.h */
-    s32 res = sysLv2FsOpen(path, (u32)flags, &fd, NULL, 0);
+    u32 mode = 0;
+    if (flags & O_CREAT) {
+        va_list args;
+        va_start(args, flags);
+        mode = (u32)va_arg(args, int);
+        va_end(args);
+    }
+    /* Map POSIX flags to PS3 native flags */
+    s32 native_flags = translate_open_flags(flags);
+
+    s32 res = sysLv2FsOpen(path, native_flags, &fd, mode, NULL, 0);
     _in_stub = 0;
-    _log("STUB: open(%s, %x) -> fd %d (res %x)\n", path, flags, (int)fd, (unsigned int)res);
+    _log("STUB: open(%s, %x -> native %x, %o) -> fd %d (res %x)\n", path, flags, (unsigned int)native_flags, mode, (int)fd, (unsigned int)res);
     if (res == 0) return (int)fd;
     errno = (int)(res & 0xFF);
     return -1;
@@ -194,6 +224,13 @@ ssize_t read(int fd, void *buf, size_t count) {
 }
 
 ssize_t write(int fd, const void *buf, size_t count) {
+    /* Manually redirect FD 1 and 2 to log if they aren't already */
+    if ((fd == 1 || fd == 2) && _log_fd >= 0) {
+        u64 written = 0;
+        sysLv2FsWrite(_log_fd, buf, (u64)count, &written);
+        return (ssize_t)written;
+    }
+
     if (_in_stub) return -1;
     _in_stub = 1;
     u64 written = 0;
