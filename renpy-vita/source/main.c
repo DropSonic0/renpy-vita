@@ -22,6 +22,7 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sys/memory.h>
 #include <sysutil/sysutil.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 /* Set process parameters: Priority 1001, 16MB stack size */
 SYS_PROCESS_PARAM(1001, 0x1000000);
@@ -131,18 +132,20 @@ void show_error_and_exit(const char* message)
 int main(int argc, char* argv[])
 {
 #ifdef __PS3__
-    /* Try to create log file as early as possible and redirect stdout/stderr */
-    ps3_log_fp = freopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w", stdout);
-    if (ps3_log_fp) {
-        dup2(fileno(stdout), fileno(stderr));
+    /* Try to create log file as early as possible and redirect FD 1 and 2 */
+    int log_fd = open("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (log_fd >= 0) {
+        dup2(log_fd, 1);
+        dup2(log_fd, 2);
+        if (log_fd > 2) close(log_fd);
         setvbuf(stdout, NULL, _IONBF, 0);
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 
-    printf("Ren'Py PS3: [V28-IO-TRACE] Main started\n");
+    printf("Ren'Py PS3: [V29-HDR-SYNC] Main started\n");
     printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V28-IO-TRACE] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V29-HDR-SYNC] STARTING\n");
     printf("****************************************\n\n");
     printf("Ren'Py PS3: fileno(stdout) = %d, fileno(stderr) = %d\n", fileno(stdout), fileno(stderr));
     fflush(stdout);

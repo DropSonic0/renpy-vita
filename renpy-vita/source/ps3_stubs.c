@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include <sys/ioctl.h>
 
 static int _in_stub = 0;
 static void _log(const char *fmt, ...) {
@@ -67,34 +68,22 @@ int isatty(int fd) { return 0; }
 static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
     if (!buf || !lv2_st) return;
     memset(buf, 0, sizeof(struct stat));
-    buf->st_mode = lv2_st->st_mode;
-    buf->st_uid = lv2_st->st_uid;
-    buf->st_gid = lv2_st->st_gid;
+    buf->st_mode = (mode_t)lv2_st->st_mode;
+    buf->st_uid = (uid_t)lv2_st->st_uid;
+    buf->st_gid = (gid_t)lv2_st->st_gid;
     buf->st_atime = lv2_st->st_atime;
     buf->st_mtime = lv2_st->st_mtime;
     buf->st_ctime = lv2_st->st_ctime;
-    buf->st_size = lv2_st->st_size;
-    buf->st_blksize = 4096;
+    buf->st_size = (off_t)lv2_st->st_size;
+    buf->st_blksize = (long)lv2_st->st_blksize;
     buf->st_nlink = 1;
+    buf->st_dev = 1;
+    buf->st_ino = 1;
+    if (buf->st_blksize <= 0) buf->st_blksize = 4096;
+    buf->st_blocks = (buf->st_size + 511) / 512;
 }
 
 int fstat(int fd, struct stat *buf) {
-    sysFSStat lv2_st;
-    memset(&lv2_st, 0, sizeof(sysFSStat));
-    s32 res = sysLv2FsFStat(fd, &lv2_st);
-
-    u64 cur=0, end=0;
-    sysLv2FsLSeek64(fd, 0, 1, &cur);
-    sysLv2FsLSeek64(fd, 0, 2, &end);
-    sysLv2FsLSeek64(fd, cur, 0, &cur);
-
-    if (res == 0) {
-        map_stat(buf, &lv2_st);
-        if (buf->st_size == 0 && end > 0) buf->st_size = end;
-        _log("STUB: fstat(%d) -> size %lld, mode %x\n", fd, (long long)buf->st_size, (unsigned int)buf->st_mode);
-        return 0;
-    }
-
     if (fd >= 0 && fd <= 2) {
         if (buf) {
             memset(buf, 0, sizeof(struct stat));
@@ -103,6 +92,22 @@ int fstat(int fd, struct stat *buf) {
             buf->st_blksize = 4096;
         }
         _log("STUB: fstat(%d) -> SUCCESS (Std Stream Fake)\n", fd);
+        return 0;
+    }
+
+    sysFSStat lv2_st;
+    memset(&lv2_st, 0, sizeof(sysFSStat));
+    s32 res = sysLv2FsFStat((s32)fd, &lv2_st);
+
+    u64 end=0;
+    u64 dummy_pos=0;
+    sysLv2FsLSeek64((s32)fd, 0, 2, &end); // SEEK_END
+    sysLv2FsLSeek64((s32)fd, 0, 0, &dummy_pos); // SEEK_SET
+
+    if (res == 0) {
+        map_stat(buf, &lv2_st);
+        if (buf->st_size == 0 && end > 0) buf->st_size = end;
+        _log("STUB: fstat(%d) -> size %lld, mode %x\n", fd, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
 
@@ -132,6 +137,7 @@ int lstat(const char *path, struct stat *buf) { return stat(path, buf); }
 
 #undef open
 int open(const char *path, int flags, ...) {
+    s32 fd = -1;
     unsigned int mode = 0;
     if (flags & O_CREAT) {
         va_list args;
@@ -139,8 +145,7 @@ int open(const char *path, int flags, ...) {
         mode = va_arg(args, unsigned int);
         va_end(args);
     }
-    s32 fd = -1;
-    s32 res = sysLv2FsOpen(path, flags, &fd, mode, NULL, 0);
+    s32 res = sysLv2FsOpen(path, (u32)flags, &fd, mode, NULL, 0);
     _log("STUB: open(%s, %x) -> fd %d (res %x)\n", path, flags, (int)fd, (unsigned int)res);
     if (res == 0) return (int)fd;
     errno = (int)res;
@@ -149,20 +154,13 @@ int open(const char *path, int flags, ...) {
 
 #undef read
 ssize_t read(int fd, void *buf, size_t count) {
-    if (fd == 0) {
-        // stdin: return EOF to avoid blocking
-        return 0;
-    }
+    if (fd == 0) return 0;
     u64 read_bytes = 0;
-    s32 res = sysLv2FsRead(fd, buf, count, &read_bytes);
+    s32 res = sysLv2FsRead((s32)fd, buf, (u64)count, &read_bytes);
     if (res != 0) {
         _log("STUB: read(%d, %zu) -> FAIL %x\n", fd, count, (unsigned int)res);
         errno = (int)res;
         return -1;
-    }
-    // Only log small reads or zip reads to avoid log spam
-    if (count < 1024) {
-        // _log("STUB: read(%d, %zu) -> %llu\n", fd, count, read_bytes);
     }
     return (ssize_t)read_bytes;
 }
@@ -170,9 +168,8 @@ ssize_t read(int fd, void *buf, size_t count) {
 #undef write
 ssize_t write(int fd, const void *buf, size_t count) {
     u64 written = 0;
-    s32 res = sysLv2FsWrite(fd, buf, count, &written);
+    s32 res = sysLv2FsWrite((s32)fd, buf, (u64)count, &written);
     if (res != 0) {
-        // Can't log here if it's the log file failing
         errno = (int)res;
         return -1;
     }
@@ -182,7 +179,7 @@ ssize_t write(int fd, const void *buf, size_t count) {
 #undef lseek
 off_t lseek(int fd, off_t offset, int whence) {
     u64 pos = 0;
-    s32 res = sysLv2FsLSeek64(fd, (u64)offset, whence, &pos);
+    s32 res = sysLv2FsLSeek64((s32)fd, (u64)offset, whence, &pos);
     if (res == 0) return (off_t)pos;
     _log("STUB: lseek(%d, %lld, %d) -> FAIL %x\n", fd, (long long)offset, whence, (unsigned int)res);
     errno = (int)res;
@@ -195,9 +192,20 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
     return 0;
 }
 
+#undef ioctl
+int ioctl(int fd, unsigned long request, ...) {
+    _log("STUB: ioctl(%d, %lx)\n", fd, request);
+    return -1;
+}
+
+#undef fcntl
+int fcntl(int fd, int cmd, ...) {
+    _log("STUB: fcntl(%d, %d)\n", fd, cmd);
+    return 0;
+}
+
 #undef getenv
 char *getenv(const char *name) {
-    // SDL_getenv should work, but let's log it
     extern char *SDL_getenv(const char *);
     char *res = SDL_getenv(name);
     _log("STUB: getenv(%s) -> %s\n", name, res ? res : "NULL");
