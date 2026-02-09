@@ -13,14 +13,26 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+/* Logger using direct PS3 syscalls to avoid recursion */
+static s32 _log_fd = -1;
 static int _in_stub = 0;
-static void _log(const char *fmt, ...) {
-    if (_in_stub) return;
+
+void ps3_init_logger(s32 fd) {
+    _log_fd = fd;
+}
+
+void _log(const char *fmt, ...) {
+    if (_log_fd < 0 || _in_stub) return;
     _in_stub = 1;
+    char buf[1024];
     va_list args;
     va_start(args, fmt);
-    vprintf(fmt, args);
+    int len = vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
+    if (len > 0) {
+        u64 written = 0;
+        sysLv2FsWrite(_log_fd, buf, (u64)len, &written);
+    }
     _in_stub = 0;
 }
 
@@ -35,6 +47,11 @@ static void _log(const char *fmt, ...) {
 #undef getpid
 #undef stat
 #undef lstat
+#undef open
+#undef close
+#undef read
+#undef write
+#undef lseek
 
 /* get* functions are declared in unistd.h but missing from libraries */
 uid_t getuid(void) { return 0; }
@@ -52,15 +69,15 @@ int sigaddset(sigset_t *set, int signum) { return 0; }
 int sigdelset(sigset_t *set, int signum) { return 0; }
 int sigismember(const sigset_t *set, int signum) { return 0; }
 
-int pipe(int fildes[2]) { printf("STUB: pipe\n"); errno = ENOSYS; return -1; }
-int fork() { printf("STUB: fork\n"); errno = ENOSYS; return -1; }
-int execv(const char *path, char *const argv[]) { printf("STUB: execv %s\n", path); errno = ENOSYS; return -1; }
-int symlink(const char *path1, const char *path2) { printf("STUB: symlink %s -> %s\n", path1, path2); errno = EROFS; return -1; }
+int pipe(int fildes[2]) { _log("STUB: pipe\n"); errno = ENOSYS; return -1; }
+int fork() { _log("STUB: fork\n"); errno = ENOSYS; return -1; }
+int execv(const char *path, char *const argv[]) { _log("STUB: execv %s\n", path); errno = ENOSYS; return -1; }
+int symlink(const char *path1, const char *path2) { _log("STUB: symlink %s -> %s\n", path1, path2); errno = EROFS; return -1; }
 int fdatasync(int fildes) { return 0; }
-char *ttyname(int fd) { printf("STUB: ttyname %d\n", fd); return NULL; }
-int readlink(const char *path, char *buf, size_t bufsiz) { printf("STUB: readlink %s\n", path); errno = ENOSYS; return -1; }
-int gethostname(char *name, size_t len) { printf("STUB: gethostname\n"); snprintf(name, len, "ps3"); return 0; }
-long sysconf(int name) { printf("STUB: sysconf %d\n", name); return -1; }
+char *ttyname(int fd) { _log("STUB: ttyname %d\n", fd); return NULL; }
+int readlink(const char *path, char *buf, size_t bufsiz) { _log("STUB: readlink %s\n", path); errno = ENOSYS; return -1; }
+int gethostname(char *name, size_t len) { _log("STUB: gethostname\n"); snprintf(name, len, "ps3"); return 0; }
+long sysconf(int name) { _log("STUB: sysconf %d\n", name); return -1; }
 int isatty(int fd) { return 0; }
 
 // Helper to map sysFSStat to struct stat
@@ -71,9 +88,9 @@ static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
     buf->st_mode = (mode_t)lv2_st->st_mode;
     buf->st_uid = (uid_t)lv2_st->st_uid;
     buf->st_gid = (gid_t)lv2_st->st_gid;
-    buf->st_atime = lv2_st->st_atime;
-    buf->st_mtime = lv2_st->st_mtime;
-    buf->st_ctime = lv2_st->st_ctime;
+    buf->st_atime = (time_t)lv2_st->st_atime;
+    buf->st_mtime = (time_t)lv2_st->st_mtime;
+    buf->st_ctime = (time_t)lv2_st->st_ctime;
     buf->st_size = (off_t)lv2_st->st_size;
     buf->st_blksize = (long)lv2_st->st_blksize;
     if (buf->st_blksize <= 0) buf->st_blksize = 4096;
@@ -85,6 +102,8 @@ static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
 }
 
 int fstat(int fd, struct stat *buf) {
+    if (_in_stub) return -1;
+
     // Check for standard streams FIRST to avoid syscalls that might hang/fail
     if (fd >= 0 && fd <= 2) {
         if (buf) {
@@ -97,6 +116,7 @@ int fstat(int fd, struct stat *buf) {
         return 0;
     }
 
+    _in_stub = 1;
     sysFSStat lv2_st;
     memset(&lv2_st, 0, sizeof(sysFSStat));
     s32 res = sysLv2FsFStat((s32)fd, &lv2_st);
@@ -104,11 +124,12 @@ int fstat(int fd, struct stat *buf) {
     u64 orig_pos = 0, end_pos = 0;
     sysLv2FsLSeek64((s32)fd, 0, 1, &orig_pos); // SEEK_CUR
     sysLv2FsLSeek64((s32)fd, 0, 2, &end_pos);  // SEEK_END
-    sysLv2FsLSeek64((s32)fd, (u64)orig_pos, 0, &orig_pos); // SEEK_SET (restore)
+    sysLv2FsLSeek64((s32)fd, orig_pos, 0, &orig_pos); // SEEK_SET (restore)
 
     if (res == 0) {
         map_stat(buf, &lv2_st);
         if (buf->st_size == 0 && end_pos > 0) buf->st_size = (off_t)end_pos;
+        _in_stub = 0;
         _log("STUB: fstat(%d) -> size %lld, mode %x\n", fd, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
@@ -120,71 +141,88 @@ int fstat(int fd, struct stat *buf) {
         buf->st_size = (off_t)end_pos;
         buf->st_blksize = 4096;
     }
+    _in_stub = 0;
     _log("STUB: fstat(%d) -> FALLBACK %x, size %lld\n", fd, (unsigned int)res, (long long)end_pos);
     return 0;
 }
 
 int stat(const char *path, struct stat *buf) {
+    if (_in_stub) return -1;
+    _in_stub = 1;
     sysFSStat lv2_st;
     s32 res = sysLv2FsStat(path, &lv2_st);
     if (res == 0) {
         map_stat(buf, &lv2_st);
+        _in_stub = 0;
         _log("STUB: stat(%s) -> size %lld, mode %x\n", path, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
+    _in_stub = 0;
     _log("STUB: stat(%s) -> FAIL %x\n", path, (unsigned int)res);
     return -1;
 }
 
 int lstat(const char *path, struct stat *buf) { return stat(path, buf); }
 
-#undef open
 int open(const char *path, int flags, ...) {
+    if (_in_stub) return -1;
+    _in_stub = 1;
     s32 fd = -1;
-    unsigned int mode = 0;
-    if (flags & O_CREAT) {
-        va_list args;
-        va_start(args, flags);
-        mode = va_arg(args, unsigned int);
-        va_end(args);
-    }
-    s32 res = sysLv2FsOpen(path, (u32)flags, &fd, mode, NULL, 0);
+    /* Map flags if necessary, but for now we assume they match or PS3 uses them directly.
+       Using 5-argument version from sysfs.h */
+    s32 res = sysLv2FsOpen(path, (u32)flags, &fd, NULL, 0);
+    _in_stub = 0;
     _log("STUB: open(%s, %x) -> fd %d (res %x)\n", path, flags, (int)fd, (unsigned int)res);
     if (res == 0) return (int)fd;
-    errno = (int)res;
+    errno = (int)(res & 0xFF);
     return -1;
 }
 
-#undef read
 ssize_t read(int fd, void *buf, size_t count) {
     if (fd == 0) return 0; // EOF for stdin
+    if (_in_stub) return -1;
+    _in_stub = 1;
     u64 read_bytes = 0;
     s32 res = sysLv2FsRead((s32)fd, buf, (u64)count, &read_bytes);
+    _in_stub = 0;
     if (res != 0) {
         _log("STUB: read(%d, %zu) -> FAIL %x\n", fd, count, (unsigned int)res);
-        errno = (int)res;
+        errno = (int)(res & 0xFF);
         return -1;
     }
     return (ssize_t)read_bytes;
 }
 
-#undef lseek
+ssize_t write(int fd, const void *buf, size_t count) {
+    if (_in_stub) return -1;
+    _in_stub = 1;
+    u64 written = 0;
+    s32 res = sysLv2FsWrite((s32)fd, buf, (u64)count, &written);
+    _in_stub = 0;
+    if (res != 0) {
+        errno = (int)(res & 0xFF);
+        return -1;
+    }
+    return (ssize_t)written;
+}
+
 off_t lseek(int fd, off_t offset, int whence) {
+    if (_in_stub) return -1;
+    _in_stub = 1;
     u64 pos = 0;
     s32 res = sysLv2FsLSeek64((s32)fd, (u64)offset, whence, &pos);
+    _in_stub = 0;
     if (res == 0) return (off_t)pos;
     _log("STUB: lseek(%d, %lld, %d) -> FAIL %x\n", fd, (long long)offset, whence, (unsigned int)res);
-    errno = (int)res;
+    errno = (int)(res & 0xFF);
     return -1;
 }
 
-#undef select
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
     _log("STUB: select(%d)\n", nfds);
     return 0;
 }
 
-#undef getenv
 char *getenv(const char *name) {
     extern char *SDL_getenv(const char *);
     char *res = SDL_getenv(name);
@@ -192,31 +230,33 @@ char *getenv(const char *name) {
     return res;
 }
 
-#undef close
 int close(int fd) {
     if (fd >= 0 && fd <= 2) return 0;
+    if (_in_stub) return -1;
+    _in_stub = 1;
     s32 res = sysLv2FsClose((s32)fd);
+    _in_stub = 0;
     _log("STUB: close(%d) -> %x\n", fd, (unsigned int)res);
     if (res == 0) return 0;
-    errno = (int)res;
+    errno = (int)(res & 0xFF);
     return -1;
 }
 
 /* Stubs for popen/pclose if not available in PSL1GHT */
-FILE *popen(const char *command, const char *type) { printf("STUB: popen %s\n", command); return NULL; }
-int pclose(FILE *stream) { printf("STUB: pclose\n"); return -1; }
+FILE *popen(const char *command, const char *type) { _log("STUB: popen %s\n", command); return NULL; }
+int pclose(FILE *stream) { _log("STUB: pclose\n"); return -1; }
 
 /* Stubs for pwd/grp functions if missing */
-void *getpwuid(unsigned int uid) { printf("STUB: getpwuid %u\n", uid); return NULL; }
-void *getpwnam(const char *name) { printf("STUB: getpwnam %s\n", name); return NULL; }
-void *getgrgid(unsigned int gid) { printf("STUB: getgrgid %u\n", gid); return NULL; }
-void *getgrnam(const char *name) { printf("STUB: getgrnam %s\n", name); return NULL; }
+void *getpwuid(unsigned int uid) { _log("STUB: getpwuid %u\n", uid); return NULL; }
+void *getpwnam(const char *name) { _log("STUB: getpwnam %s\n", name); return NULL; }
+void *getgrgid(unsigned int gid) { _log("STUB: getgrgid %u\n", gid); return NULL; }
+void *getgrnam(const char *name) { _log("STUB: getgrnam %s\n", name); return NULL; }
 
 /* Python stubs */
-void PyEval_InitThreads() { printf("STUB: PyEval_InitThreads\n"); }
+void PyEval_InitThreads() { _log("STUB: PyEval_InitThreads\n"); }
 
 /* SDL_image stubs for SDL2 compatibility if only SDL1 version is present. */
 void* IMG_LoadTexture_RW(void* renderer, void* src, int freesrc) {
-    fprintf(stderr, "ERROR: IMG_LoadTexture_RW called but not implemented (SDL_image 1.2 incompatibility)\n");
+    _log("ERROR: IMG_LoadTexture_RW called but not implemented\n");
     return NULL;
 }

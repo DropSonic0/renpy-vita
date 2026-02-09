@@ -23,6 +23,7 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sysutil/sysutil.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <lv2/sysfs.h>
 
 /* Set process parameters: Priority 1001, 16MB stack size */
 SYS_PROCESS_PARAM(1001, 0x1000000);
@@ -118,7 +119,7 @@ SceUID pid = -1;
 #ifdef __PS3__
 typedef int SceUID;
 int pid = -1;
-FILE *ps3_log_fp = NULL;
+extern void ps3_init_logger(s32 fd);
 #endif
 
 void show_error_and_exit(const char* message)
@@ -132,20 +133,21 @@ void show_error_and_exit(const char* message)
 int main(int argc, char* argv[])
 {
 #ifdef __PS3__
-    /* Try to create log file as early as possible and redirect stdout/stderr */
-    ps3_log_fp = freopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w", stdout);
-    if (ps3_log_fp) {
-        dup2(fileno(stdout), fileno(stderr));
-        setvbuf(stdout, NULL, _IONBF, 0);
-        setvbuf(stderr, NULL, _IONBF, 0);
+    /* Try to create log file as early as possible using native syscalls */
+    s32 log_fd = -1;
+    s32 log_res = sysLv2FsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", SYS_O_WRONLY | SYS_O_CREAT | SYS_O_TRUNC, &log_fd, NULL, 0);
+    if (log_res == 0) {
+        ps3_init_logger(log_fd);
+        /* Also redirect FD 1 and 2 at the kernel level if possible */
+        dup2((int)log_fd, 1);
+        dup2((int)log_fd, 2);
     }
 
-    printf("Ren'Py PS3: [V31-SYNC] Main started\n");
-    printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
+    printf("Ren'Py PS3: [V32-DIRECT-LOG] Main started\n");
+    printf("Ren'Py PS3: stdout and stderr redirected to log.txt (Native FD: %d)\n", (int)log_fd);
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V31-SYNC] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V32-DIRECT-LOG] STARTING\n");
     printf("****************************************\n\n");
-    printf("Ren'Py PS3: fileno(stdout) = %d, fileno(stderr) = %d\n", fileno(stdout), fileno(stderr));
     fflush(stdout);
 #endif
 
