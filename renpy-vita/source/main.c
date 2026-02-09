@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
     }
 
     _log("\n\n****************************************\n");
-    _log("Ren'Py PS3: [BUILD V38.1-REENT-FIX] STARTING\n");
+    _log("Ren'Py PS3: [BUILD V39-WRAPPED-STUBS] STARTING\n");
     _log("****************************************\n\n");
     _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif
@@ -260,6 +260,11 @@ int main(int argc, char* argv[])
 
     _log("Ren'Py PS3: Pre-Initialize Check...\n");
     _log("Ren'Py PS3: Heartbeat before Py_InitializeEx(0)\n");
+
+    /* Direct write test to verify logger is still alive even if Python hangs */
+    u64 direct_written = 0;
+    sysLv2FsWrite(log_fd, "DIRECT_SYSCALL_TEST: Logger is alive!\n", 38, &direct_written);
+
     _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))...\n");
     Py_InitializeEx(0);
     _log("Ren'Py PS3: Python Initialized successfully!\n");

@@ -109,9 +109,14 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES), -I$(ROOT)/$(dir)) \
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
 					$(LIBPSL1GHT_LIB)
 
+# Linker wraps to ensure stubs are used instead of broken libc versions
+WRAPS := -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=write -Wl,--wrap=lseek -Wl,--wrap=close \
+         -Wl,--wrap=stat -Wl,--wrap=fstat -Wl,--wrap=lstat -Wl,--wrap=exit -Wl,--wrap=abort \
+         -Wl,--wrap=gettimeofday -Wl,--wrap=sbrk -Wl,--wrap=mmap
+
 # Added -DIMG_INIT_WEBP=0 as before
 export CFLAGS	:=	-O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDE)
-export LDFLAGS	:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map
+export LDFLAGS	:=	$(WRAPS) -finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 .PHONY: $(BUILD) clean
