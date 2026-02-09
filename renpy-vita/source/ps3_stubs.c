@@ -41,19 +41,23 @@ void _log(const char *fmt, ...) {
     _in_stub = 0;
 }
 
-/* Map POSIX open flags to PS3 native flags */
+/* Map POSIX open flags to PS3 native flags.
+   Constants from toolchain's fcntl.h vs sysfs.h */
 static s32 translate_open_flags(int flags) {
     s32 out = 0;
-    /* Access modes */
-    if ((flags & O_ACCMODE) == O_RDONLY) out |= SYS_O_RDONLY;
-    if ((flags & O_ACCMODE) == O_WRONLY) out |= SYS_O_WRONLY;
-    if ((flags & O_ACCMODE) == O_RDWR)   out |= SYS_O_RDWR;
+    /* Access modes: POSIX 0,1,2 usually match PS3 0,1,2 */
+    int acc = flags & 3; // O_ACCMODE
+    if (acc == 0) out |= SYS_O_RDONLY;
+    else if (acc == 1) out |= SYS_O_WRONLY;
+    else if (acc == 2) out |= SYS_O_RDWR;
 
-    /* Other flags */
-    if (flags & O_CREAT)  out |= SYS_O_CREAT;
-    if (flags & O_EXCL)   out |= SYS_O_EXCL;
-    if (flags & O_TRUNC)  out |= SYS_O_TRUNC;
-    if (flags & O_APPEND) out |= SYS_O_APPEND;
+    /* Translation for other flags (values differ between Newlib and PS3 kernel) */
+    if (flags & 0x0200) out |= SYS_O_CREAT;  // Newlib O_CREAT
+    else if (flags & 0x0040) out |= SYS_O_CREAT; // Alternative O_CREAT
+
+    if (flags & 0x0800) out |= SYS_O_EXCL;   // Newlib O_EXCL
+    if (flags & 0x0400) out |= SYS_O_TRUNC;  // Newlib O_TRUNC
+    if (flags & 0x0008) out |= SYS_O_APPEND; // Newlib O_APPEND
 
     return out;
 }
@@ -124,8 +128,6 @@ static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
 }
 
 int fstat(int fd, struct stat *buf) {
-    if (_in_stub) return -1;
-
     // Check for standard streams FIRST to avoid syscalls that might hang/fail
     if (fd >= 0 && fd <= 2) {
         if (buf) {
@@ -138,6 +140,7 @@ int fstat(int fd, struct stat *buf) {
         return 0;
     }
 
+    if (_in_stub) return -1;
     _in_stub = 1;
     sysFSStat lv2_st;
     memset(&lv2_st, 0, sizeof(sysFSStat));
@@ -147,11 +150,11 @@ int fstat(int fd, struct stat *buf) {
     sysLv2FsLSeek64((s32)fd, 0, 1, &orig_pos); // SEEK_CUR
     sysLv2FsLSeek64((s32)fd, 0, 2, &end_pos);  // SEEK_END
     sysLv2FsLSeek64((s32)fd, orig_pos, 0, &orig_pos); // SEEK_SET (restore)
+    _in_stub = 0;
 
     if (res == 0) {
         map_stat(buf, &lv2_st);
         if (buf->st_size == 0 && end_pos > 0) buf->st_size = (off_t)end_pos;
-        _in_stub = 0;
         _log("STUB: fstat(%d) -> size %lld, mode %x\n", fd, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
@@ -163,7 +166,6 @@ int fstat(int fd, struct stat *buf) {
         buf->st_size = (off_t)end_pos;
         buf->st_blksize = 4096;
     }
-    _in_stub = 0;
     _log("STUB: fstat(%d) -> FALLBACK %x, size %lld\n", fd, (unsigned int)res, (long long)end_pos);
     return 0;
 }
@@ -173,13 +175,12 @@ int stat(const char *path, struct stat *buf) {
     _in_stub = 1;
     sysFSStat lv2_st;
     s32 res = sysLv2FsStat(path, &lv2_st);
+    _in_stub = 0;
     if (res == 0) {
         map_stat(buf, &lv2_st);
-        _in_stub = 0;
         _log("STUB: stat(%s) -> size %lld, mode %x\n", path, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
-    _in_stub = 0;
     _log("STUB: stat(%s) -> FAIL %x\n", path, (unsigned int)res);
     return -1;
 }
@@ -191,7 +192,7 @@ int open(const char *path, int flags, ...) {
     _in_stub = 1;
     s32 fd = -1;
     u32 mode = 0;
-    if (flags & O_CREAT) {
+    if (flags & 0x0200) { // O_CREAT
         va_list args;
         va_start(args, flags);
         mode = (u32)va_arg(args, int);
