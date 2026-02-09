@@ -132,20 +132,18 @@ void show_error_and_exit(const char* message)
 int main(int argc, char* argv[])
 {
 #ifdef __PS3__
-    /* Try to create log file as early as possible and redirect FD 1 and 2 */
-    int log_fd = open("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (log_fd >= 0) {
-        dup2(log_fd, 1);
-        dup2(log_fd, 2);
-        if (log_fd > 2) close(log_fd);
+    /* Try to create log file as early as possible and redirect stdout/stderr */
+    ps3_log_fp = freopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w", stdout);
+    if (ps3_log_fp) {
+        dup2(fileno(stdout), fileno(stderr));
         setvbuf(stdout, NULL, _IONBF, 0);
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 
-    printf("Ren'Py PS3: [V30-HDR-FIX] Main started\n");
+    printf("Ren'Py PS3: [V31-SYNC] Main started\n");
     printf("Ren'Py PS3: stdout and stderr redirected to log.txt\n");
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V30-HDR-FIX] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V31-SYNC] STARTING\n");
     printf("****************************************\n\n");
     printf("Ren'Py PS3: fileno(stdout) = %d, fileno(stderr) = %d\n", fileno(stdout), fileno(stderr));
     fflush(stdout);

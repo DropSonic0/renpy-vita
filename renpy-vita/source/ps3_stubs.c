@@ -67,6 +67,7 @@ int isatty(int fd) { return 0; }
 static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
     if (!buf || !lv2_st) return;
     memset(buf, 0, sizeof(struct stat));
+
     buf->st_mode = (mode_t)lv2_st->st_mode;
     buf->st_uid = (uid_t)lv2_st->st_uid;
     buf->st_gid = (gid_t)lv2_st->st_gid;
@@ -75,14 +76,16 @@ static void map_stat(struct stat *buf, sysFSStat *lv2_st) {
     buf->st_ctime = lv2_st->st_ctime;
     buf->st_size = (off_t)lv2_st->st_size;
     buf->st_blksize = (long)lv2_st->st_blksize;
+    if (buf->st_blksize <= 0) buf->st_blksize = 4096;
+
     buf->st_nlink = 1;
     buf->st_dev = 1;
     buf->st_ino = 1;
-    if (buf->st_blksize <= 0) buf->st_blksize = 4096;
     buf->st_blocks = (buf->st_size + 511) / 512;
 }
 
 int fstat(int fd, struct stat *buf) {
+    // Check for standard streams FIRST to avoid syscalls that might hang/fail
     if (fd >= 0 && fd <= 2) {
         if (buf) {
             memset(buf, 0, sizeof(struct stat));
@@ -90,7 +93,7 @@ int fstat(int fd, struct stat *buf) {
             buf->st_nlink = 1;
             buf->st_blksize = 4096;
         }
-        _log("STUB: fstat(%d) -> SUCCESS (Std Stream Fake)\n", fd);
+        _log("STUB: fstat(%d) -> SUCCESS (Std Stream)\n", fd);
         return 0;
     }
 
@@ -98,25 +101,26 @@ int fstat(int fd, struct stat *buf) {
     memset(&lv2_st, 0, sizeof(sysFSStat));
     s32 res = sysLv2FsFStat((s32)fd, &lv2_st);
 
-    u64 end=0;
-    u64 dummy_pos=0;
-    sysLv2FsLSeek64((s32)fd, 0, 2, &end); // SEEK_END
-    sysLv2FsLSeek64((s32)fd, 0, 0, &dummy_pos); // SEEK_SET
+    u64 orig_pos = 0, end_pos = 0;
+    sysLv2FsLSeek64((s32)fd, 0, 1, &orig_pos); // SEEK_CUR
+    sysLv2FsLSeek64((s32)fd, 0, 2, &end_pos);  // SEEK_END
+    sysLv2FsLSeek64((s32)fd, (u64)orig_pos, 0, &orig_pos); // SEEK_SET (restore)
 
     if (res == 0) {
         map_stat(buf, &lv2_st);
-        if (buf->st_size == 0 && end > 0) buf->st_size = end;
+        if (buf->st_size == 0 && end_pos > 0) buf->st_size = (off_t)end_pos;
         _log("STUB: fstat(%d) -> size %lld, mode %x\n", fd, (long long)buf->st_size, (unsigned int)buf->st_mode);
         return 0;
     }
 
-    // Fallback
+    // Fallback for non-standard streams if syscall fails
     if (buf) {
         memset(buf, 0, sizeof(struct stat));
-        buf->st_mode = 0100000 | 0666;
-        buf->st_size = end;
+        buf->st_mode = 0100000 | 0666; // S_IFREG
+        buf->st_size = (off_t)end_pos;
+        buf->st_blksize = 4096;
     }
-    _log("STUB: fstat(%d) -> FALLBACK %x, size %lld\n", fd, (unsigned int)res, (long long)end);
+    _log("STUB: fstat(%d) -> FALLBACK %x, size %lld\n", fd, (unsigned int)res, (long long)end_pos);
     return 0;
 }
 
@@ -153,7 +157,7 @@ int open(const char *path, int flags, ...) {
 
 #undef read
 ssize_t read(int fd, void *buf, size_t count) {
-    if (fd == 0) return 0;
+    if (fd == 0) return 0; // EOF for stdin
     u64 read_bytes = 0;
     s32 res = sysLv2FsRead((s32)fd, buf, (u64)count, &read_bytes);
     if (res != 0) {
@@ -162,17 +166,6 @@ ssize_t read(int fd, void *buf, size_t count) {
         return -1;
     }
     return (ssize_t)read_bytes;
-}
-
-#undef write
-ssize_t write(int fd, const void *buf, size_t count) {
-    u64 written = 0;
-    s32 res = sysLv2FsWrite((s32)fd, buf, (u64)count, &written);
-    if (res != 0) {
-        errno = (int)res;
-        return -1;
-    }
-    return (ssize_t)written;
 }
 
 #undef lseek
@@ -188,18 +181,6 @@ off_t lseek(int fd, off_t offset, int whence) {
 #undef select
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
     _log("STUB: select(%d)\n", nfds);
-    return 0;
-}
-
-#undef ioctl
-int ioctl(int fd, unsigned long request, ...) {
-    _log("STUB: ioctl(%d, %lx)\n", fd, request);
-    return -1;
-}
-
-#undef fcntl
-int fcntl(int fd, int cmd, ...) {
-    _log("STUB: fcntl(%d, %d)\n", fd, cmd);
     return 0;
 }
 
