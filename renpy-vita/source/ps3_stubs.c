@@ -15,6 +15,7 @@
 #include <sys/times.h>
 #include <pwd.h>
 #include <grp.h>
+#include <locale.h>
 
 /* Fallback for sigset_t if missing */
 #ifndef _SIGSET_T_DECLARED
@@ -26,17 +27,50 @@ typedef uint64_t sigset_t;
 
 static s32 _log_fd = -1;
 static int _in_stub = 0;
+static u32 _log_count = 0;
 
 void ps3_init_logger(s32 fd) {
     _log_fd = fd;
 }
 
-/* Simple safe logger that doesn't use vsnprintf, safe for malloc/free tracing */
-void _log_safe(const char *msg) {
+/* Internal Safe String Builders */
+static void _log_putc(char c) {
     if (_log_fd < 0) return;
     u64 written = 0;
-    sysLv2FsWrite(_log_fd, msg, strlen(msg), &written);
-    sysLv2FsFsync(_log_fd);
+    sysLv2FsWrite(_log_fd, &c, 1, &written);
+}
+
+static void _log_puts(const char *s) {
+    if (_log_fd < 0 || !s) return;
+    u64 written = 0;
+    sysLv2FsWrite(_log_fd, s, strlen(s), &written);
+}
+
+static void _log_puthex(u64 val) {
+    const char *chars = "0123456789abcdef";
+    _log_puts("0x");
+    for (int i = 60; i >= 0; i -= 4) {
+        _log_putc(chars[(val >> i) & 0xF]);
+    }
+}
+
+static void _log_putnum(u64 val) {
+    if (val == 0) { _log_putc('0'); return; }
+    char buf[24];
+    int i = sizeof(buf) - 1;
+    buf[i--] = '\0';
+    while (val > 0 && i >= 0) {
+        buf[i--] = (char)('0' + (val % 10));
+        val /= 10;
+    }
+    _log_puts(&buf[i+1]);
+}
+
+void _log_safe(const char *msg) {
+    if (_log_fd < 0) return;
+    _log_puts(msg);
+    _log_count++;
+    if ((_log_count % 50) == 0) sysLv2FsFsync(_log_fd);
 }
 
 void _log(const char *fmt, ...) {
@@ -49,8 +83,9 @@ void _log(const char *fmt, ...) {
     va_end(args);
     if (len > 0) {
         u64 written = 0;
-        s32 res = sysLv2FsWrite(_log_fd, buf, (u64)len, &written);
-        if (res == 0) sysLv2FsFsync(_log_fd);
+        sysLv2FsWrite(_log_fd, buf, (u64)len, &written);
+        _log_count++;
+        if ((_log_count % 20) == 0) sysLv2FsFsync(_log_fd);
     }
     _in_stub = 0;
 }
@@ -80,47 +115,77 @@ extern void* __real_mmap(void *addr, size_t length, int prot, int flags, int fd,
 extern int __real_gettimeofday(struct timeval *tv, void *tz);
 typedef void (*sighandler_t)(int);
 extern sighandler_t __real_signal(int signum, sighandler_t handler);
+extern char* __real_getenv(const char* name);
+extern int __real_isatty(int fd);
+extern char* __real_setlocale(int category, const char* locale);
 
 /* Wrapped Memory Management */
 USED VISIBLE void* __wrap_malloc(size_t size) {
-    if (!_in_stub) { _log_safe("WRAP: malloc\n"); }
-    return __real_malloc(size);
+    void* ptr = __real_malloc(size);
+    if (!_in_stub) {
+        _log_puts("WRAP: malloc("); _log_putnum(size); _log_puts(") -> "); _log_puthex((u64)ptr); _log_putc('\n');
+    }
+    return ptr;
 }
 USED VISIBLE void __wrap_free(void* ptr) {
-    if (!_in_stub && ptr) { _log_safe("WRAP: free\n"); }
+    if (!_in_stub && ptr) {
+        _log_puts("WRAP: free("); _log_puthex((u64)ptr); _log_puts(")\n");
+    }
     __real_free(ptr);
 }
 USED VISIBLE void* __wrap_realloc(void* ptr, size_t size) {
-    if (!_in_stub) { _log_safe("WRAP: realloc\n"); }
-    return __real_realloc(ptr, size);
+    void* nptr = __real_realloc(ptr, size);
+    if (!_in_stub) {
+        _log_puts("WRAP: realloc("); _log_puthex((u64)ptr); _log_puts(", "); _log_putnum(size); _log_puts(") -> "); _log_puthex((u64)nptr); _log_putc('\n');
+    }
+    return nptr;
 }
 USED VISIBLE void* __wrap_calloc(size_t nmemb, size_t size) {
-    if (!_in_stub) { _log_safe("WRAP: calloc\n"); }
-    return __real_calloc(nmemb, size);
+    void* ptr = __real_calloc(nmemb, size);
+    if (!_in_stub) {
+        _log_puts("WRAP: calloc("); _log_putnum(nmemb); _log_puts(", "); _log_putnum(size); _log_puts(") -> "); _log_puthex((u64)ptr); _log_putc('\n');
+    }
+    return ptr;
 }
 USED VISIBLE void *__wrap_sbrk(intptr_t inc) {
     void *ret = __real_sbrk(inc);
-    if (!_in_stub) { _log_safe("WRAP: sbrk\n"); }
+    if (!_in_stub) { _log_puts("WRAP: sbrk("); _log_putnum(inc); _log_puts(") -> "); _log_puthex((u64)ret); _log_putc('\n'); }
     return ret;
 }
 USED VISIBLE void *__wrap_mmap(void *a, size_t l, int p, int f, int fd, off_t o) {
-    if (!_in_stub) { _log_safe("WRAP: mmap\n"); }
-    return __real_mmap(a, l, p, f, fd, o);
+    void *ret = __real_mmap(a, l, p, f, fd, o);
+    if (!_in_stub) { _log_puts("WRAP: mmap("); _log_putnum(l); _log_puts(") -> "); _log_puthex((u64)ret); _log_putc('\n'); }
+    return ret;
 }
 
 /* Wrapped System Control */
 USED VISIBLE sighandler_t __wrap_signal(int signum, sighandler_t handler) {
-    _log("WRAP: signal(%d)\n", signum);
+    _log("WRAP: signal(%d, %p)\n", signum, handler);
     return __real_signal(signum, handler);
 }
 USED VISIBLE void __wrap_exit(int status) {
     _log("WRAP: exit(%d)\n", status);
-    _log_safe("HALTING VIA EXIT\n");
+    sysLv2FsFsync(_log_fd);
+    while(1);
+}
+USED VISIBLE void __wrap__exit(int status) {
+    _log("WRAP: _exit(%d)\n", status);
+    sysLv2FsFsync(_log_fd);
+    while(1);
+}
+USED VISIBLE void __wrap__Exit(int status) {
+    _log("WRAP: _Exit(%d)\n", status);
+    sysLv2FsFsync(_log_fd);
     while(1);
 }
 USED VISIBLE void __wrap_abort(void) {
     _log("WRAP: abort()\n");
-    _log_safe("HALTING VIA ABORT\n");
+    sysLv2FsFsync(_log_fd);
+    while(1);
+}
+USED VISIBLE void __wrap___assert_fail(const char *a, const char *f, unsigned int l, const char *fn) {
+    _log("WRAP: ASSERT FAIL: %s at %s:%u in %s\n", a, f, l, fn);
+    sysLv2FsFsync(_log_fd);
     while(1);
 }
 
@@ -167,7 +232,6 @@ USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
         u64 w = 0;
         sysLv2FsWrite(_log_fd, "PY_OUT: ", 8, &w);
         sysLv2FsWrite(_log_fd, buf, (u64)count, &w);
-        sysLv2FsFsync(_log_fd);
         return (ssize_t)count;
     }
     u64 written = 0;
@@ -178,7 +242,6 @@ USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
     return (ssize_t)written;
 }
 
-extern int __real_close(int fd);
 USED VISIBLE int __wrap_close(int fd) {
     if (fd >= 0 && fd <= 2) return 0;
     s32 res = sysLv2FsClose((s32)fd);
@@ -241,16 +304,48 @@ USED VISIBLE int __wrap_lstat(const char *path, struct stat *buf) {
     return __wrap_stat(path, buf);
 }
 
-/* Identity and signals */
+/* Environment and Terminal Wraps */
+USED VISIBLE char* __wrap_getenv(const char* name) {
+    char* res = __real_getenv(name);
+    if (!_in_stub) { _log("WRAP: getenv(%s) -> %s\n", name, res ? res : "NULL"); }
+    return res;
+}
+USED VISIBLE int __wrap_isatty(int fd) {
+    int res = __real_isatty(fd);
+    if (!_in_stub) { _log("WRAP: isatty(%d) -> %d\n", fd, res); }
+    return res;
+}
+USED VISIBLE char* __wrap_setlocale(int category, const char* locale) {
+    char* res = __real_setlocale(category, locale);
+    if (!_in_stub) { _log("WRAP: setlocale(%d, %s) -> %s\n", category, locale ? locale : "NULL", res ? res : "NULL"); }
+    return res;
+}
+
+/* Other System Wraps */
+USED VISIBLE int __wrap_fcntl(int fd, int cmd, ...) {
+    _log("WRAP: fcntl(%d, %d)\n", fd, cmd);
+    return 0;
+}
+USED VISIBLE int __wrap_ioctl(int fd, unsigned long request, ...) {
+    _log("WRAP: ioctl(%d, %lu)\n", fd, request);
+    return -1;
+}
+
+/* Identity and process basics */
 USED VISIBLE uid_t getuid(void) { return 0; }
 USED VISIBLE gid_t getgid(void) { return 0; }
 USED VISIBLE uid_t geteuid(void) { return 0; }
 USED VISIBLE gid_t getegid(void) { return 0; }
 USED VISIBLE pid_t getppid(void) { return 1; }
 USED VISIBLE pid_t getpid(void) { return 100; }
-USED VISIBLE int isatty(int fd) { return (fd >= 0 && fd <= 2); }
 
-/* Other POSIX symbols missing from toolchain */
+/* Missing Python symbols */
+USED VISIBLE FILE *popen(const char *command, const char *type) { _log("STUB: popen %s\n", command); return NULL; }
+USED VISIBLE int pclose(FILE *stream) { return -1; }
+USED VISIBLE struct passwd *getpwuid(uid_t uid) { return NULL; }
+USED VISIBLE struct passwd *getpwnam(const char *name) { return NULL; }
+USED VISIBLE struct group *getgrgid(gid_t gid) { return NULL; }
+USED VISIBLE struct group *getgrnam(const char *name) { return NULL; }
 USED VISIBLE int pipe(int fildes[2]) { _log("STUB: pipe\n"); errno = ENOSYS; return -1; }
 USED VISIBLE int symlink(const char *path1, const char *path2) { _log("STUB: symlink\n"); errno = EROFS; return -1; }
 USED VISIBLE int fdatasync(int fildes) { return 0; }
@@ -260,14 +355,6 @@ USED VISIBLE int readlink(const char *path, char *buf, size_t bufsiz) { return -
 USED VISIBLE int gethostname(char *name, size_t len) { snprintf(name, len, "ps3"); return 0; }
 USED VISIBLE long sysconf(int name) { return -1; }
 
-/* Missing Python symbols */
-USED VISIBLE FILE *popen(const char *command, const char *type) { _log("STUB: popen %s\n", command); return NULL; }
-USED VISIBLE int pclose(FILE *stream) { return -1; }
-USED VISIBLE struct passwd *getpwuid(uid_t uid) { return NULL; }
-USED VISIBLE struct passwd *getpwnam(const char *name) { return NULL; }
-USED VISIBLE struct group *getgrgid(gid_t gid) { return NULL; }
-USED VISIBLE struct group *getgrnam(const char *name) { return NULL; }
-
-/* Python internal overrides - be careful! */
+/* Python internal overrides */
 void PyEval_InitThreads() { _log("STUB: PyEval_InitThreads (potential GIL issues)\n"); }
 void* IMG_LoadTexture_RW(void* r, void* s, int f) { return NULL; }
