@@ -123,11 +123,12 @@ int main(int argc, char* argv[])
     }
 
     _log("\n\n****************************************\n");
-    _log("Ren'Py PS3: [BUILD V36-64BIT-STUBS] STARTING\n");
+    _log("Ren'Py PS3: [BUILD V37-MAX-LOG] STARTING\n");
     _log("****************************************\n\n");
     _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif
 
+    _log("Ren'Py PS3: Configuring Python flags...\n");
     Py_NoSiteFlag = 1;
     Py_IgnoreEnvironmentFlag = 0;
     Py_NoUserSiteDirectory = 1;
@@ -257,9 +258,10 @@ int main(int argc, char* argv[])
     _log("Ren'Py PS3: Extending Inittab...\n");
     PyImport_ExtendInittab(builtins);
 
+    _log("Ren'Py PS3: Pre-Initialize Check...\n");
     _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))...\n");
     Py_InitializeEx(0);
-    _log("Ren'Py PS3: Python Initialized!\n");
+    _log("Ren'Py PS3: Python Initialized successfully!\n");
 
     char* pyargs[] = { python_script_buffer, app_dir_path, NULL };
     PySys_SetArgvEx(2, pyargs, 1);
