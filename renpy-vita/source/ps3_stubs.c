@@ -33,7 +33,7 @@ void _log(const char *fmt, ...) {
 
     if (_log_fd < 0) {
         /* Use native open to avoid recursion */
-        sysLv2FsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
+        sysFsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
                      O_WRONLY | O_CREAT | O_APPEND, &_log_fd, 0666, NULL, 0);
     }
 
@@ -46,8 +46,7 @@ void _log(const char *fmt, ...) {
 
         if (len > 0) {
             u64 written = 0;
-            sysLv2FsWrite(_log_fd, buffer, (u64)len, &written);
-            sysLv2FsFsync(_log_fd);
+            sysFsWrite(_log_fd, buffer, (u64)len, &written);
         }
     }
 
@@ -57,13 +56,12 @@ void _log(const char *fmt, ...) {
 /* Safe log for signal handlers or inside wraps */
 void _log_safe(const char *msg) {
     if (_log_fd < 0) {
-        sysLv2FsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
+        sysFsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
                      O_WRONLY | O_CREAT | O_APPEND, &_log_fd, 0666, NULL, 0);
     }
     if (_log_fd >= 0) {
         u64 written = 0;
-        sysLv2FsWrite(_log_fd, msg, (u64)strlen(msg), &written);
-        sysLv2FsFsync(_log_fd);
+        sysFsWrite(_log_fd, msg, (u64)strlen(msg), &written);
     }
 }
 
@@ -92,7 +90,7 @@ USED VISIBLE int __wrap_open(const char *path, int flags, ...) {
     }
 
     int fd = -1;
-    int res = sysLv2FsOpen(path, flags, &fd, mode, NULL, 0);
+    int res = sysFsOpen(path, flags, &fd, mode, NULL, 0);
 
     _log("open(\"%s\", 0x%x) -> res:%d, fd:%d\n", path, flags, res, fd);
 
@@ -121,7 +119,7 @@ USED VISIBLE int __wrap__open(const char *path, int flags, ...) {
 extern ssize_t __real_read(int fd, void *buf, size_t count);
 USED VISIBLE ssize_t __wrap_read(int fd, void *buf, size_t count) {
     u64 nread = 0;
-    int res = sysLv2FsRead(fd, buf, (u64)count, &nread);
+    int res = sysFsRead(fd, buf, (u64)count, &nread);
 
     // Too noisy for frequent reads, but useful for debugging hangs
     // _log("read(%d, %p, %u) -> res:%d, nread:%llu\n", fd, buf, count, res, nread);
@@ -147,14 +145,13 @@ USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
         /* Write to log in chunks if too large */
         u64 written = 0;
         if (_log_fd >= 0) {
-             sysLv2FsWrite(_log_fd, buf, (u64)count, &written);
-             sysLv2FsFsync(_log_fd);
+             sysFsWrite(_log_fd, buf, (u64)count, &written);
         }
         return (ssize_t)count;
     }
 
     u64 nwritten = 0;
-    int res = sysLv2FsWrite(fd, buf, (u64)count, &nwritten);
+    int res = sysFsWrite(fd, buf, (u64)count, &nwritten);
 
     if (res != 0) {
         errno = res;
@@ -174,7 +171,7 @@ USED VISIBLE off_t __wrap_lseek(int fd, off_t offset, int whence) {
     }
 
     u64 pos = 0;
-    int res = sysLv2FsLSeek64(fd, (s64)offset, whence, &pos);
+    int res = sysFsLseek(fd, (s64)offset, whence, &pos);
 
     if (res != 0) {
         errno = res;
@@ -194,7 +191,7 @@ USED VISIBLE int __wrap_close(int fd) {
     if (fd == _log_fd) {
         _log_fd = -1;
     }
-    int res = sysLv2FsClose(fd);
+    int res = sysFsClose(fd);
     _log("close(%d) -> %d\n", fd, res);
     if (res != 0) {
         errno = res;
@@ -230,7 +227,7 @@ USED VISIBLE int __wrap_fstat(int fd, struct stat *buf) {
     }
 
     sysFSStat ps3_st;
-    int res = sysLv2FsFStat(fd, &ps3_st);
+    int res = sysFsFstat(fd, &ps3_st);
     if (res == 0) {
         map_stat(&ps3_st, buf);
         _log("fstat(%d) -> size:%lld\n", fd, (long long)buf->st_size);
@@ -239,9 +236,9 @@ USED VISIBLE int __wrap_fstat(int fd, struct stat *buf) {
 
     /* Fallback using lseek if FStat fails */
     u64 current = 0, end = 0;
-    sysLv2FsLSeek64(fd, 0, SEEK_CUR, &current);
-    sysLv2FsLSeek64(fd, 0, SEEK_END, &end);
-    sysLv2FsLSeek64(fd, (s64)current, SEEK_SET, &current);
+    sysFsLseek(fd, 0, SEEK_CUR, &current);
+    sysFsLseek(fd, 0, SEEK_END, &end);
+    sysFsLseek(fd, (s64)current, SEEK_SET, &current);
 
     memset(buf, 0, sizeof(struct stat));
     buf->st_mode = S_IFREG | 0666;
@@ -254,7 +251,7 @@ USED VISIBLE int __wrap__fstat(int fd, struct stat *buf) { return __wrap_fstat(f
 
 USED VISIBLE int __wrap_stat(const char *path, struct stat *buf) {
     sysFSStat ps3_st;
-    int res = sysLv2FsStat(path, &ps3_st);
+    int res = sysFsStat(path, &ps3_st);
     if (res == 0) {
         map_stat(&ps3_st, buf);
         return 0;
