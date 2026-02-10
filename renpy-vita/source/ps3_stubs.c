@@ -124,43 +124,10 @@ extern char* __real_getenv(const char* name);
 extern char* __real_setlocale(int category, const char* locale);
 extern int __real_isatty(int fd);
 
-/* WRAPPED MEMORY */
-USED VISIBLE void* __wrap_malloc(size_t size) {
-    void* ptr = __real_malloc(size);
-    _malloc_count++;
-    if (!_in_stub && ((_malloc_count % 50) == 0 || !ptr)) {
-        int saved = _in_stub; _in_stub = 1;
-        char buf[128];
-        snprintf(buf, sizeof(buf), "WRAP: malloc(%zu) -> %p\n", size, ptr);
-        _log_safe(buf);
-        _in_stub = saved;
-    }
-    return ptr;
-}
-USED VISIBLE void __wrap_free(void* ptr) { __real_free(ptr); }
-USED VISIBLE void* __wrap_realloc(void* ptr, size_t size) {
-    void* nptr = __real_realloc(ptr, size);
-    if (!_in_stub && !nptr && size > 0) { _log_safe("WRAP: realloc FAILED\n"); }
-    return nptr;
-}
-USED VISIBLE void* __wrap_calloc(size_t n, size_t s) { return __real_calloc(n, s); }
-USED VISIBLE void* __wrap__malloc_r(void* r, size_t s) { return __wrap_malloc(s); }
-USED VISIBLE void __wrap__free_r(void* r, void* p) { __wrap_free(p); }
-USED VISIBLE void* __wrap__realloc_r(void* r, void* p, size_t s) { return __wrap_realloc(p, s); }
-USED VISIBLE void* __wrap__calloc_r(void* r, size_t n, size_t s) { return __wrap_calloc(n, s); }
-USED VISIBLE void *__wrap_sbrk(intptr_t inc) {
-    void *ret = __real_sbrk(inc);
-    if (!_in_stub) { _log_puts("WRAP: sbrk("); _log_putnum(inc); _log_puts(") -> "); _log_puthex((u64)ret); _log_putc('\n'); }
-    return ret;
-}
-USED VISIBLE void *__wrap_mmap(void *a, size_t l, int p, int f, int fd, off_t o) {
-    if (!_in_stub) { _log_safe("WRAP: mmap called\n"); }
-    return __real_mmap(a, l, p, f, fd, o);
-}
+/* WRAPPED MEMORY - REMOVED TO PREVENT STARTUP CRASHES */
 
 /* WRAPPED SYSTEM CONTROL */
 USED VISIBLE sighandler_t __wrap_signal(int s, sighandler_t h) { _log("WRAP: signal(%d)\n", s); return __real_signal(s, h); }
-USED VISIBLE int __wrap_sigaction(int sig, const void *act, void *oact) { _log("WRAP: sigaction(%d)\n", sig); return 0; }
 USED VISIBLE void __wrap_exit(int s) { _log("WRAP: exit(%d)\n", s); sysLv2FsFsync(_log_fd); while(1); }
 USED VISIBLE void __wrap__exit(int s) { _log("WRAP: _exit(%d)\n", s); sysLv2FsFsync(_log_fd); while(1); }
 USED VISIBLE void __wrap__Exit(int s) { _log("WRAP: _Exit(%d)\n", s); sysLv2FsFsync(_log_fd); while(1); }
@@ -268,7 +235,6 @@ int do_close(int fd) {
 }
 USED VISIBLE int __wrap_close(int f) { return do_close(f); }
 USED VISIBLE int __wrap__close(int f) { return do_close(f); }
-USED VISIBLE int __wrap_fflush(FILE* f) { return 0; }
 
 /* WRAPPED LSEEK */
 off_t do_lseek(int fd, off_t offset, int whence) {
@@ -323,10 +289,11 @@ USED VISIBLE struct dirent* __wrap_readdir(DIR *dirp) { return NULL; }
 USED VISIBLE int __wrap_closedir(DIR *dirp) { return -1; }
 
 /* MISC WRAPS */
+#define PS3_USRDIR "/dev_hdd0/game/RENPY0001/USRDIR"
 USED VISIBLE char* __wrap_getcwd(char* buf, size_t size) {
     _log("WRAP: getcwd(%p, %zu)\n", buf, size);
     if (buf) {
-        strncpy(buf, "/dev_hdd0/game/RENPY0001/USRDIR", size);
+        strncpy(buf, PS3_USRDIR, size);
         return buf;
     }
     return NULL;
@@ -363,16 +330,14 @@ USED VISIBLE int __wrap_raise(int sig) { _log("WRAP: raise(%d)\n", sig); sysLv2F
 USED VISIBLE int __wrap_kill(pid_t pid, int sig) { _log("WRAP: kill(%d, %d)\n", (int)pid, sig); sysLv2FsFsync(_log_fd); while(1); return 0; }
 
 /* BASICS */
-USED VISIBLE uid_t getuid(void) { return 0; }
-USED VISIBLE gid_t getgid(void) { return 0; }
-USED VISIBLE pid_t getpid(void) { return 100; }
-USED VISIBLE FILE *popen(const char *c, const char *t) { return NULL; }
-USED VISIBLE int pclose(FILE *s) { return -1; }
-USED VISIBLE struct passwd *getpwuid(uid_t uid) { return NULL; }
-USED VISIBLE struct passwd *getpwnam(const char *name) { return NULL; }
-USED VISIBLE struct group *getgrgid(gid_t gid) { return NULL; }
-USED VISIBLE struct group *getgrnam(const char *name) { return NULL; }
+USED VISIBLE FILE *__wrap_popen(const char *c, const char *t) { return NULL; }
+USED VISIBLE int __wrap_pclose(FILE *s) { return -1; }
+USED VISIBLE struct passwd *__wrap_getpwuid(uid_t uid) { return NULL; }
+USED VISIBLE struct passwd *__wrap_getpwnam(const char *name) { return NULL; }
+USED VISIBLE struct group *__wrap_getgrgid(gid_t gid) { return NULL; }
+USED VISIBLE struct group *__wrap_getgrnam(const char *name) { return NULL; }
 
 /* Python internal overrides */
 void PyEval_InitThreads() { _log("STUB: PyEval_InitThreads\n"); }
 void* IMG_LoadTexture_RW(void* r, void* s, int f) { return NULL; }
+void Py_SetPath(const char *path) { _log("STUB: Py_SetPath(%s)\n", path); }

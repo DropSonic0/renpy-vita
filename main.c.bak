@@ -10,7 +10,7 @@
 #include <psp2/appmgr.h>
 #include <psp2/io/fcntl.h>
 #include <psp2/kernel/processmgr.h>
-#include <psp2/vshbridge.h> 
+#include <psp2/vshbridge.h>
 #include <gpu_es4/psp2_pvr_hint.h>
 
 int _newlib_heap_size_user = 180 * 1024 * 1024;
@@ -31,11 +31,6 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 
 /* Set process parameters: Priority 1001, 16MB stack size */
 SYS_PROCESS_PARAM(1001, 0x1000000);
-
-extern void ps3_init_logger(s32 fd);
-extern void _log(const char *fmt, ...);
-extern void ps3_crash_handler(int sig);
-#define printf _log
 #endif
 
 #define MAX_PATH 256
@@ -94,7 +89,6 @@ PyMODINIT_FUNC initrenpy_styledata_style_selected_idle_functions();
 PyMODINIT_FUNC initrenpy_styledata_style_selected_insensitive_functions();
 PyMODINIT_FUNC initrenpy_styledata_styleclass();
 PyMODINIT_FUNC initrenpy_styledata_stylesets();
-PyMODINIT_FUNC initrenpy_styledata_styleutil();
 PyMODINIT_FUNC initrenpy_text_ftfont();
 PyMODINIT_FUNC initrenpy_text_textsupport();
 PyMODINIT_FUNC initrenpy_text_texwrap();
@@ -107,6 +101,13 @@ char python_home_buffer[0x400];
 char python_snprintf_buffer[0x400];
 char python_script_buffer[0x400];
 char title_id[0xA];
+
+#ifdef __PS3__
+extern void ps3_init_logger(s32 fd);
+extern void _log(const char *fmt, ...);
+extern void ps3_crash_handler(int sig);
+#define printf _log
+#endif
 
 void show_error_and_exit(const char* message)
 {
@@ -125,23 +126,14 @@ int main(int argc, char* argv[])
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 
+
     _log("\n\n****************************************\n");
     _log("Ren'Py PS3: [BUILD V45-STARTUP-FIX] STARTING\n");
     _log("****************************************\n\n");
+    _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif
 
-#ifdef __psp2__
-    /* Original Vita Init Logic */
-    SceUID pid_v = sceKernelGetProcessId();
-    sceAppMgrAppParamGetString(pid_v, 12, title_id, sizeof(title_id));
-    snprintf(app_dir_path, sizeof(app_dir_path), "ux0:app/%s", title_id);
-    snprintf(app_program_path, sizeof(app_program_path), "%s/eboot.bin", app_dir_path);
-    scePowerSetArmClockFrequency(444);
-    sceAppMgrUmount("app0:");
-    SDL_setenv("VITA_DISABLE_TOUCH_BACK", "1", 1);
-    Py_SetProgramName(app_program_path);
-#endif
-
+    _log("Ren'Py PS3: Configuring Python flags...\n");
     Py_NoSiteFlag = 1;
     Py_IgnoreEnvironmentFlag = 0;
     Py_NoUserSiteDirectory = 1;
@@ -155,6 +147,8 @@ int main(int argc, char* argv[])
     title_id[sizeof(title_id) - 1] = '\0';
     snprintf(app_dir_path, sizeof(app_dir_path), "%s", PS3_USRDIR);
     snprintf(app_program_path, sizeof(app_program_path), "%s/EBOOT.BIN", app_dir_path);
+
+    _log("Ren'Py PS3: App dir path: %s\n", app_dir_path);
     Py_SetProgramName(app_program_path);
 #endif
 
@@ -213,7 +207,6 @@ int main(int argc, char* argv[])
         {"renpy.styledata.style_selected_insensitive_functions", initrenpy_styledata_style_selected_insensitive_functions},
         {"renpy.styledata.styleclass", initrenpy_styledata_styleclass},
         {"renpy.styledata.stylesets", initrenpy_styledata_stylesets},
-        {"renpy.styledata.styleutil", initrenpy_styledata_styleutil},
         {"renpy.text.ftfont", initrenpy_text_ftfont},
         {"renpy.text.textsupport", initrenpy_text_textsupport},
         {"renpy.text.texwrap", initrenpy_text_texwrap},
@@ -224,9 +217,7 @@ int main(int argc, char* argv[])
 
     char* dir_paths[] = {
         app_dir_path,
-#ifdef __PS3__
         "/app_home",
-#endif
         NULL,
     };
 
@@ -244,7 +235,7 @@ int main(int argc, char* argv[])
             found_sysconfigdata = 1;
             strncpy(python_home_buffer, dir_paths[i], sizeof(python_home_buffer));
             python_home_buffer[sizeof(python_home_buffer)-1] = '\0';
-            
+
             snprintf(python_script_buffer, sizeof(python_script_buffer), "%s/renpy.py", dir_paths[i]);
             if (stat(python_script_buffer, &st) == 0) {
                 _log("Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
@@ -263,39 +254,50 @@ int main(int argc, char* argv[])
 
     char path_env[1024];
     snprintf(path_env, sizeof(path_env), "%s/lib/python27.zip:%s", python_home_buffer, python_home_buffer);
+    _log("Ren'Py PS3: Setting PYTHONPATH to %s\n", path_env);
     SDL_setenv("PYTHONPATH", path_env, 1);
     SDL_setenv("PYTHONHOME", python_home_buffer, 1);
+
+    _log("Ren'Py PS3: Python Version: %s\n", Py_GetVersion());
 
     _log("Ren'Py PS3: Extending Inittab...\n");
     PyImport_ExtendInittab(builtins);
 
-#ifdef __PS3__
+    _log("Ren'Py PS3: Pre-Initialize Check...\n");
+    _log("Ren'Py PS3: Heartbeat before Py_InitializeEx(0)\n");
+
+    /* Direct write test to verify logger is still alive even if Python hangs */
     u64 direct_written = 0;
     sysLv2FsWrite(log_fd, "DIRECT_SYSCALL_TEST: Logger is alive!\n", 38, &direct_written);
     sysLv2FsFsync(log_fd);
+
+    _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))...\n");
 
     signal(SIGSEGV, ps3_crash_handler);
     signal(SIGILL, ps3_crash_handler);
     signal(SIGFPE, ps3_crash_handler);
     signal(SIGBUS, ps3_crash_handler);
-#endif
 
-    _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))...\n");
     Py_InitializeEx(0);
+    _log("Ren'Py PS3: Heartbeat after Py_InitializeEx(0)\n");
     _log("Ren'Py PS3: Python Initialized successfully!\n");
 
     char* pyargs[] = { python_script_buffer, app_dir_path, NULL };
     PySys_SetArgvEx(2, pyargs, 1);
 
     snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s', '%s']", python_zip_full_path, python_home_buffer);
+    _log("Ren'Py PS3: Running path setup script...\n");
     PyRun_SimpleString(python_snprintf_buffer);
 
-    PyRun_SimpleString("import os, pygame_sdl2, encodings\n");
+    _log("Ren'Py PS3: Importing basic modules...\n");
+    PyRun_SimpleString("import os, pygame_sdl2, encodings\nprint 'Basic modules imported'\n");
 
+    _log("Ren'Py PS3: Opening renpy.py for execution...\n");
     FILE* fp = fopen(python_script_buffer, "rb");
     if (fp) {
         _log("Ren'Py PS3: Executing renpy.py...\n");
-        PyRun_SimpleFileEx(fp, python_script_buffer, 1);
+        int res = PyRun_SimpleFileEx(fp, python_script_buffer, 1);
+        _log("Ren'Py PS3: Execution result: %d\n", res);
     } else {
         show_error_and_exit("Failed to open renpy.py");
     }
