@@ -20,9 +20,13 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sys/process.h>
 #include <sys/memory.h>
 #include <sysutil/sysutil.h>
+#include <signal.h>
 
-/* Set process parameters: Priority 1001, 4MB stack size */
-SYS_PROCESS_PARAM(1001, 0x400000);
+/* Set process parameters: Priority 1001, 16MB stack size */
+SYS_PROCESS_PARAM(1001, 0x1000000);
+
+/* External crash handler from ps3_stubs.c */
+void ps3_crash_handler(int sig);
 #endif
 
 #define MAX_PATH 256
@@ -135,14 +139,25 @@ void show_error_and_exit(const char* message)
 int main(int argc, char* argv[])
 {
 #ifdef __PS3__
+    /* Disable buffering for stdout and stderr to ensure logs are captured */
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     /* Try to create log file as early as possible */
     ps3_log_fp = fopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w");
     if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: [v16-final-check] Main started\n");
+        fprintf(ps3_log_fp, "Ren'Py PS3: [v43-DEBUG-CORE] Main started\n");
         fflush(ps3_log_fp);
     }
+
+    /* Register crash handlers */
+    signal(SIGSEGV, ps3_crash_handler);
+    signal(SIGILL, ps3_crash_handler);
+    signal(SIGFPE, ps3_crash_handler);
+    signal(SIGBUS, ps3_crash_handler);
+
     printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V16-FINAL] STARTING\n");
+    printf("Ren'Py PS3: [BUILD V43-DEBUG-CORE] STARTING\n");
     printf("****************************************\n\n");
     fflush(stdout);
 #endif
@@ -160,7 +175,7 @@ int main(int argc, char* argv[])
     Py_OptimizeFlag = 0;
     Py_VerboseFlag = 2; /* Enable verbose logging for Python init */
     Py_HashRandomizationFlag = 0; /* Avoid hanging for entropy */
-    Py_InteractiveFlag = 1; /* Ensure we see output */
+    Py_InteractiveFlag = 0; /* Disable interactive terminal probes */
 
 #ifdef __psp2__
     /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
@@ -428,9 +443,8 @@ int main(int argc, char* argv[])
             }
             printf("Ren'Py PS3: Calling Py_SetPythonHome(%s)...\n", python_home_buffer);
             fflush(stdout);
-            /* Temporarily use NULL to see if it avoids the hang */
-            Py_SetPythonHome(NULL);
-            printf("Ren'Py PS3: Py_SetPythonHome(NULL) done.\n");
+            Py_SetPythonHome(python_home_buffer);
+            printf("Ren'Py PS3: Py_SetPythonHome done.\n");
             fflush(stdout);
             break;
         }
@@ -476,6 +490,12 @@ int main(int argc, char* argv[])
     fflush(stdout);
     if (ps3_log_fp) {
         fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
+        fflush(ps3_log_fp);
+    }
+
+    /* Heartbeat test to verify log writing works before hang */
+    if (ps3_log_fp) {
+        fprintf(ps3_log_fp, "HEARTBEAT: Just before Py_InitializeEx\n");
         fflush(ps3_log_fp);
     }
     
