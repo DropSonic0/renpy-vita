@@ -102,6 +102,7 @@ char title_id[0xA];
 #ifdef __PS3__
 extern void ps3_init_logger(s32 fd);
 extern void _log(const char *fmt, ...);
+extern void ps3_crash_handler(int sig);
 #define printf _log
 #endif
 
@@ -122,8 +123,13 @@ int main(int argc, char* argv[])
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 
+    signal(SIGSEGV, ps3_crash_handler);
+    signal(SIGILL, ps3_crash_handler);
+    signal(SIGFPE, ps3_crash_handler);
+    signal(SIGBUS, ps3_crash_handler);
+
     _log("\n\n****************************************\n");
-    _log("Ren'Py PS3: [BUILD V42.1-TRACE-FIX] STARTING\n");
+    _log("Ren'Py PS3: [BUILD V43-DEBUG-CORE] STARTING\n");
     _log("****************************************\n\n");
     _log("Ren'Py PS3: log_fd = %d\n", (int)log_fd);
 #endif
@@ -268,6 +274,7 @@ int main(int argc, char* argv[])
 
     _log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))...\n");
     Py_InitializeEx(0);
+    _log("Ren'Py PS3: Heartbeat after Py_InitializeEx(0)\n");
     _log("Ren'Py PS3: Python Initialized successfully!\n");
 
     char* pyargs[] = { python_script_buffer, app_dir_path, NULL };

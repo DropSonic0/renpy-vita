@@ -68,9 +68,9 @@ static void _log_putnum(u64 val) {
 
 void _log_safe(const char *msg) {
     if (_log_fd < 0) return;
-    _log_puts(msg);
-    _log_count++;
-    if ((_log_count % 100) == 0) sysLv2FsFsync(_log_fd);
+    u64 written = 0;
+    sysLv2FsWrite(_log_fd, msg, strlen(msg), &written);
+    sysLv2FsFsync(_log_fd);
 }
 
 void _log(const char *fmt, ...) {
@@ -84,10 +84,16 @@ void _log(const char *fmt, ...) {
     if (len > 0) {
         u64 written = 0;
         sysLv2FsWrite(_log_fd, buf, (u64)len, &written);
-        _log_count++;
-        if ((_log_count % 20) == 0) sysLv2FsFsync(_log_fd);
+        sysLv2FsFsync(_log_fd);
     }
     _in_stub = saved;
+}
+
+void ps3_crash_handler(int sig) {
+    _log_safe("\n!!! FATAL CRASH: Signal ");
+    _log_putnum(sig);
+    _log_safe(" received !!!\n");
+    while(1);
 }
 
 static s32 translate_open_flags(int flags) {
@@ -122,11 +128,11 @@ extern int __real_isatty(int fd);
 USED VISIBLE void* __wrap_malloc(size_t size) {
     void* ptr = __real_malloc(size);
     _malloc_count++;
-    if (!_in_stub && ((_malloc_count % 200) == 0 || !ptr)) {
+    if (!_in_stub && ((_malloc_count % 50) == 0 || !ptr)) {
         int saved = _in_stub; _in_stub = 1;
-        _log_puts("WRAP: malloc("); _log_putnum(size); _log_puts(") -> "); _log_puthex((u64)ptr);
-        if (!ptr) _log_puts(" !!! FAILED !!!");
-        _log_putc('\n');
+        char buf[128];
+        snprintf(buf, sizeof(buf), "WRAP: malloc(%zu) -> %p\n", size, ptr);
+        _log_safe(buf);
         _in_stub = saved;
     }
     return ptr;
@@ -138,6 +144,10 @@ USED VISIBLE void* __wrap_realloc(void* ptr, size_t size) {
     return nptr;
 }
 USED VISIBLE void* __wrap_calloc(size_t n, size_t s) { return __real_calloc(n, s); }
+USED VISIBLE void* __wrap__malloc_r(void* r, size_t s) { return __wrap_malloc(s); }
+USED VISIBLE void __wrap__free_r(void* r, void* p) { __wrap_free(p); }
+USED VISIBLE void* __wrap__realloc_r(void* r, void* p, size_t s) { return __wrap_realloc(p, s); }
+USED VISIBLE void* __wrap__calloc_r(void* r, size_t n, size_t s) { return __wrap_calloc(n, s); }
 USED VISIBLE void *__wrap_sbrk(intptr_t inc) {
     void *ret = __real_sbrk(inc);
     if (!_in_stub) { _log_puts("WRAP: sbrk("); _log_putnum(inc); _log_puts(") -> "); _log_puthex((u64)ret); _log_putc('\n'); }
@@ -150,6 +160,7 @@ USED VISIBLE void *__wrap_mmap(void *a, size_t l, int p, int f, int fd, off_t o)
 
 /* WRAPPED SYSTEM CONTROL */
 USED VISIBLE sighandler_t __wrap_signal(int s, sighandler_t h) { _log("WRAP: signal(%d)\n", s); return __real_signal(s, h); }
+USED VISIBLE int __wrap_sigaction(int sig, const void *act, void *oact) { _log("WRAP: sigaction(%d)\n", sig); return 0; }
 USED VISIBLE void __wrap_exit(int s) { _log("WRAP: exit(%d)\n", s); sysLv2FsFsync(_log_fd); while(1); }
 USED VISIBLE void __wrap__exit(int s) { _log("WRAP: _exit(%d)\n", s); sysLv2FsFsync(_log_fd); while(1); }
 USED VISIBLE void __wrap__Exit(int s) { _log("WRAP: _Exit(%d)\n", s); sysLv2FsFsync(_log_fd); while(1); }
@@ -257,6 +268,7 @@ int do_close(int fd) {
 }
 USED VISIBLE int __wrap_close(int f) { return do_close(f); }
 USED VISIBLE int __wrap__close(int f) { return do_close(f); }
+USED VISIBLE int __wrap_fflush(FILE* f) { return 0; }
 
 /* WRAPPED LSEEK */
 off_t do_lseek(int fd, off_t offset, int whence) {
@@ -338,7 +350,14 @@ USED VISIBLE char* __wrap_setlocale(int c, const char* l) {
     if (!_in_stub) _log("WRAP: setlocale(%d, %s)\n", c, l ? l : "NULL");
     return r;
 }
-USED VISIBLE int __wrap_fcntl(int fd, int cmd, ...) { _log("WRAP: fcntl(%d, %d)\n", fd, cmd); return 0; }
+USED VISIBLE int __wrap_fcntl(int fd, int cmd, ...) {
+    if (cmd == 3) { // F_GETFL
+        if (fd == 0) return 0; // O_RDONLY
+        if (fd == 1 || fd == 2) return 1; // O_WRONLY
+    }
+    _log("WRAP: fcntl(%d, %d)\n", fd, cmd);
+    return 0;
+}
 USED VISIBLE int __wrap_ioctl(int fd, unsigned long r, ...) { _log("WRAP: ioctl(%d, %lu)\n", fd, r); return -1; }
 USED VISIBLE int __wrap_raise(int sig) { _log("WRAP: raise(%d)\n", sig); sysLv2FsFsync(_log_fd); while(1); return 0; }
 USED VISIBLE int __wrap_kill(pid_t pid, int sig) { _log("WRAP: kill(%d, %d)\n", (int)pid, sig); sysLv2FsFsync(_log_fd); while(1); return 0; }
