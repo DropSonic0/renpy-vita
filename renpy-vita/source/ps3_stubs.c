@@ -14,6 +14,8 @@
 #include <grp.h>
 #include <sys/memory.h>
 #include <sys/process.h>
+#include <lv2/sysfs.h>
+#include <lv2/process.h>
 
 #define USED __attribute__((used))
 #define VISIBLE __attribute__((visibility("default")))
@@ -74,7 +76,7 @@ VISIBLE void ps3_crash_handler(int sig) {
     /* Try to get some info */
     _log_safe("Process terminating...\n");
 
-    sys_process_exit(sig);
+    sysProcessExit(sig);
 }
 
 /* --- File I/O Wraps --- */
@@ -205,7 +207,7 @@ USED VISIBLE int __wrap__close(int fd) {
 }
 
 /* Helper to map PS3 Stat to Newlib Stat */
-static void map_stat(sysFsStat *ps3_st, struct stat *st) {
+static void map_stat(sysFSStat *ps3_st, struct stat *st) {
     memset(st, 0, sizeof(struct stat));
     st->st_mode = ps3_st->st_mode;
     st->st_size = ps3_st->st_size;
@@ -227,7 +229,7 @@ USED VISIBLE int __wrap_fstat(int fd, struct stat *buf) {
         return 0;
     }
 
-    sysFsStat ps3_st;
+    sysFSStat ps3_st;
     int res = sysLv2FsFStat(fd, &ps3_st);
     if (res == 0) {
         map_stat(&ps3_st, buf);
@@ -251,7 +253,7 @@ USED VISIBLE int __wrap_fstat64(int fd, struct stat *buf) { return __wrap_fstat(
 USED VISIBLE int __wrap__fstat(int fd, struct stat *buf) { return __wrap_fstat(fd, buf); }
 
 USED VISIBLE int __wrap_stat(const char *path, struct stat *buf) {
-    sysFsStat ps3_st;
+    sysFSStat ps3_st;
     int res = sysLv2FsStat(path, &ps3_st);
     if (res == 0) {
         map_stat(&ps3_st, buf);
@@ -317,13 +319,13 @@ USED VISIBLE void __wrap_exit(int status) {
     char msg[64];
     snprintf(msg, sizeof(msg), "\n--- EXIT CALLED (status: %d) ---\n", status);
     _log_safe(msg);
-    sys_process_exit(status);
+    sysProcessExit(status);
 }
 USED VISIBLE void __wrap__exit(int status) { __wrap_exit(status); }
 USED VISIBLE void __wrap__Exit(int status) { __wrap_exit(status); }
 USED VISIBLE void __wrap_abort(void) {
     _log_safe("\n!!! ABORT CALLED !!!\n");
-    sys_process_exit(1);
+    sysProcessExit(1);
 }
 
 USED VISIBLE int __wrap_gettimeofday(struct timeval *tv, void *tz) {
@@ -380,7 +382,7 @@ USED VISIBLE void __wrap___assert_fail(const char * assertion, const char * file
     char msg[512];
     snprintf(msg, sizeof(msg), "ASSERT FAILED: %s at %s:%u (%s)\n", assertion, file, line, function);
     _log_safe(msg);
-    sys_process_exit(1);
+    sysProcessExit(1);
 }
 
 USED VISIBLE void __wrap___assert(const char *file, int line, const char *assertion) {
