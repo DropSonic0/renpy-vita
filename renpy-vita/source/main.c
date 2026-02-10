@@ -392,12 +392,12 @@ int main(int argc, char* argv[])
             snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_zip_subpaths[j]);
             struct stat st;
             if (stat(sysconfigdata_file_path, &st) == 0) {
-                printf("Ren'Py PS3: Found python27.zip at %s (size: %ld bytes)\n", sysconfigdata_file_path, st.st_size);
+                printf("Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
                 found_sysconfigdata = 1;
                 strncpy(python_home_buffer, sysconfigdata_file_path, sizeof(python_home_buffer));
                 python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
                 if (ps3_log_fp) {
-                    fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s (size: %ld bytes)\n", sysconfigdata_file_path, st.st_size);
+                    fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
                     fflush(ps3_log_fp);
                 }
                 break;
@@ -508,8 +508,6 @@ int main(int argc, char* argv[])
         fprintf(ps3_log_fp, "Ren'Py PS3: Python Initialized!\n");
         fflush(ps3_log_fp);
     }
-
-    PyObject *pmodule;
 
     char* pyargs[] = {
         python_script_buffer,
