@@ -34,7 +34,7 @@ void _log(const char *fmt, ...) {
     if (_log_fd < 0) {
         /* Use native open to avoid recursion */
         sysFsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
-                     O_WRONLY | O_CREAT | O_APPEND, &_log_fd, 0666, NULL, 0);
+                     O_WRONLY | O_CREAT | O_APPEND, &_log_fd, NULL, 0);
     }
 
     if (_log_fd >= 0) {
@@ -57,7 +57,7 @@ void _log(const char *fmt, ...) {
 void _log_safe(const char *msg) {
     if (_log_fd < 0) {
         sysFsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
-                     O_WRONLY | O_CREAT | O_APPEND, &_log_fd, 0666, NULL, 0);
+                     O_WRONLY | O_CREAT | O_APPEND, &_log_fd, NULL, 0);
     }
     if (_log_fd >= 0) {
         u64 written = 0;
@@ -90,7 +90,7 @@ USED VISIBLE int __wrap_open(const char *path, int flags, ...) {
     }
 
     int fd = -1;
-    int res = sysFsOpen(path, flags, &fd, mode, NULL, 0);
+    int res = sysFsOpen(path, flags, &fd, NULL, 0);
 
     _log("open(\"%s\", 0x%x) -> res:%d, fd:%d\n", path, flags, res, fd);
 
@@ -278,7 +278,7 @@ extern void* __real_malloc(size_t size);
 USED VISIBLE void* __wrap_malloc(size_t size) {
     void* ptr = __real_malloc(size);
     malloc_count++;
-    if (malloc_count % 50 == 0) {
+    if (malloc_count % 1000 == 0) {
         _log("malloc(%u) -> %p (count: %d)\n", (unsigned int)size, ptr, malloc_count);
     }
     return ptr;
@@ -352,14 +352,16 @@ USED VISIBLE int __wrap_chdir(const char *path) {
     return 0;
 }
 
-USED VISIBLE int __wrap_signal(int signum, void (*handler)(int)) {
+extern void (*__real_signal(int signum, void (*handler)(int)))(int);
+USED VISIBLE void (*__wrap_signal(int signum, void (*handler)(int)))(int) {
     _log("signal(%d, %p)\n", signum, handler);
-    return 0;
+    return __real_signal(signum, handler);
 }
 
+extern int __real_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 USED VISIBLE int __wrap_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact) {
     _log("sigaction(%d)\n", signum);
-    return 0;
+    return __real_sigaction(signum, act, oldact);
 }
 
 USED VISIBLE int __wrap_kill(pid_t pid, int sig) { return 0; }
