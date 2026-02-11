@@ -125,7 +125,7 @@ int pid = -1;
 void show_error_and_exit(const char* message)
 {
     Py_Finalize();
-    printf("ERROR: %s\n", message);
+    ps3_log("ERROR: %s\n", message);
     Py_Exit(1);
 }
 

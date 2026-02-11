@@ -123,7 +123,7 @@ WRAPS := -Wl,--wrap=open -Wl,--wrap=open64 -Wl,--wrap=_open \
          -Wl,--wrap=lstat -Wl,--wrap=lstat64 -Wl,--wrap=_lstat \
          -Wl,--wrap=opendir -Wl,--wrap=readdir -Wl,--wrap=closedir \
          -Wl,--wrap=exit -Wl,--wrap=_exit -Wl,--wrap=_Exit -Wl,--wrap=abort \
-         -Wl,--wrap=gettimeofday -Wl,--wrap=sbrk -Wl,--wrap=mmap \
+         -Wl,--wrap=gettimeofday \
          -Wl,--wrap=malloc -Wl,--wrap=free -Wl,--wrap=realloc -Wl,--wrap=calloc \
          -Wl,--wrap=signal -Wl,--wrap=sigaction -Wl,--wrap=raise -Wl,--wrap=kill \
          -Wl,--wrap=isatty -Wl,--wrap=getenv -Wl,--wrap=getcwd -Wl,--wrap=chdir \
