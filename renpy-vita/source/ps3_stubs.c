@@ -18,6 +18,9 @@
 
 static int _in_stub = 0;
 static int _log_fd = -1;
+static unsigned int malloc_count = 0;
+static unsigned int read_count = 0;
+static unsigned long long total_read_bytes = 0;
 
 /* Declaraciones para las funciones reales de la libc */
 extern int __real_open(const char *path, int flags, ...);
@@ -112,7 +115,14 @@ USED VISIBLE int __wrap__open(const char *path, int flags, ...) {
 }
 
 USED VISIBLE ssize_t __wrap_read(int fd, void *buf, size_t count) {
-    return __real_read(fd, buf, count);
+    ssize_t res = __real_read(fd, buf, count);
+    if (res > 0) {
+        total_read_bytes += res;
+    }
+    if (++read_count % 200 == 0) {
+        ps3_log("READ Heartbeat: fd=%d, count=%u, total_read=%llu\n", fd, (unsigned int)count, total_read_bytes);
+    }
+    return res;
 }
 USED VISIBLE ssize_t __wrap__read(int fd, void *buf, size_t count) {
     return __wrap_read(fd, buf, count);
@@ -181,10 +191,9 @@ USED VISIBLE void* __wrap_readdir(void *dirp) { return NULL; }
 USED VISIBLE int __wrap_closedir(void *dirp) { return 0; }
 
 /* --- Memoria --- */
-static int malloc_count = 0;
 USED VISIBLE void* __wrap_malloc(size_t size) {
     void* ptr = __real_malloc(size);
-    if (++malloc_count % 100 == 0) {
+    if (++malloc_count % 50 == 0) {
         ps3_log("MALLOC Heartbeat: %d calls, last size: %u -> %p\n", malloc_count, (unsigned int)size, ptr);
     }
     if (ptr == NULL && size > 0) {
@@ -245,6 +254,7 @@ USED VISIBLE void __wrap___assert_fail(const char * assertion, const char * file
     __real_exit(1);
 }
 USED VISIBLE void __wrap___assert(const char *file, int line, const char *assertion) { __wrap___assert_fail(assertion, file, line, ""); }
+
 
 USED VISIBLE uid_t __wrap_getuid() { return 0; }
 USED VISIBLE gid_t __wrap_getgid() { return 0; }

@@ -423,6 +423,7 @@ int main(int argc, char* argv[])
     ps3_log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
     /* Use Py_InitializeEx(0) to disable signal handlers */
     Py_InitializeEx(0);
+    ps3_log("Ren'Py PS3: Py_InitializeEx(0) returned.\n");
     ps3_log("Ren'Py PS3: Python Initialized!\n");
 
     char* pyargs[] = {
