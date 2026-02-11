@@ -42,7 +42,11 @@ void _log(const char *fmt, ...) {
     _in_stub = 1;
 
     if (_log_fd < 0) {
+        /* Open log in append mode, creating it if it doesn't exist */
         _log_fd = __real_open("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", O_WRONLY | O_CREAT | O_APPEND, 0666);
+        if (_log_fd >= 0) {
+            __real_write(_log_fd, "\n--- LOG SYSTEM INITIALIZED ---\n", 32);
+        }
     }
 
     if (_log_fd >= 0) {
@@ -120,7 +124,12 @@ USED VISIBLE ssize_t __wrap__read(int fd, void *buf, size_t count) {
 USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
     /* Special handling for stdout/stderr to mirror them to the log file */
     if (fd == 1 || fd == 2) {
-        if (_log_fd >= 0) {
+        /* Ensure log is initialized */
+        if (_log_fd < 0) {
+             _log_fd = __real_open("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", O_WRONLY | O_CREAT | O_APPEND, 0666);
+        }
+
+        if (_log_fd >= 0 && fd != _log_fd) {
             _in_stub = 1;
             __real_write(_log_fd, fd == 1 ? "STDOUT: " : "STDERR: ", 8);
             __real_write(_log_fd, buf, count);
@@ -161,13 +170,21 @@ USED VISIBLE int __wrap_fstat(int fd, struct stat *buf) {
         buf->st_mode = S_IFCHR;
         return 0;
     }
-    return __real_fstat(fd, buf);
+    int res = __real_fstat(fd, buf);
+    if (res == 0) {
+         // _log("fstat(%d) -> size:%lld\n", fd, (long long)buf->st_size);
+    }
+    return res;
 }
 USED VISIBLE int __wrap_fstat64(int fd, struct stat *buf) { return __wrap_fstat(fd, buf); }
 USED VISIBLE int __wrap__fstat(int fd, struct stat *buf) { return __wrap_fstat(fd, buf); }
 
 USED VISIBLE int __wrap_stat(const char *path, struct stat *buf) {
-    return __real_stat(path, buf);
+    int res = __real_stat(path, buf);
+    if (res != 0) {
+        _log("stat(\"%s\") FAILED\n", path);
+    }
+    return res;
 }
 USED VISIBLE int __wrap_stat64(const char *path, struct stat *buf) { return __wrap_stat(path, buf); }
 USED VISIBLE int __wrap__stat(const char *path, struct stat *buf) { return __wrap_stat(path, buf); }
