@@ -20,8 +20,15 @@
 #define USED __attribute__((used))
 #define VISIBLE __attribute__((visibility("default")))
 
-/* Native PS3 structures and syscalls */
-/* Using the naming from PSL1GHT headers */
+/* Native PS3 syscalls - Using sysLv2Fs prefix which is usually in liblv2.a */
+/* We declare them manually to ensure signatures match what we expect from memory */
+extern s32 sysLv2FsOpen(const char *path, s32 flags, s32 *fd, const void *arg, u64 argsize);
+extern s32 sysLv2FsClose(s32 fd);
+extern s32 sysLv2FsRead(s32 fd, void *buf, u64 len, u64 *nread);
+extern s32 sysLv2FsWrite(s32 fd, const void *buf, u64 len, u64 *nwritten);
+extern s32 sysLv2FsLSeek64(s32 fd, s64 offset, s32 whence, u64 *pos);
+extern s32 sysLv2FsStat(const char *path, sysFSStat *st);
+extern s32 sysLv2FsFStat(s32 fd, sysFSStat *st);
 
 static int _in_stub = 0;
 static int _log_fd = -1;
@@ -33,7 +40,7 @@ void _log(const char *fmt, ...) {
 
     if (_log_fd < 0) {
         /* Use native open to avoid recursion */
-        sysFsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
+        sysLv2FsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
                      O_WRONLY | O_CREAT | O_APPEND, &_log_fd, NULL, 0);
     }
 
@@ -46,7 +53,7 @@ void _log(const char *fmt, ...) {
 
         if (len > 0) {
             u64 written = 0;
-            sysFsWrite(_log_fd, buffer, (u64)len, &written);
+            sysLv2FsWrite(_log_fd, buffer, (u64)len, &written);
         }
     }
 
@@ -56,12 +63,12 @@ void _log(const char *fmt, ...) {
 /* Safe log for signal handlers or inside wraps */
 void _log_safe(const char *msg) {
     if (_log_fd < 0) {
-        sysFsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
+        sysLv2FsOpen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt",
                      O_WRONLY | O_CREAT | O_APPEND, &_log_fd, NULL, 0);
     }
     if (_log_fd >= 0) {
         u64 written = 0;
-        sysFsWrite(_log_fd, msg, (u64)strlen(msg), &written);
+        sysLv2FsWrite(_log_fd, msg, (u64)strlen(msg), &written);
     }
 }
 
@@ -90,18 +97,17 @@ USED VISIBLE int __wrap_open(const char *path, int flags, ...) {
     }
 
     int fd = -1;
-    int res = sysFsOpen(path, flags, &fd, NULL, 0);
+    int res = sysLv2FsOpen(path, flags, &fd, NULL, 0);
 
     _log("open(\"%s\", 0x%x) -> res:%d, fd:%d\n", path, flags, res, fd);
 
     if (res != 0) {
-        errno = res; // Mapping might be needed
+        errno = res;
         return -1;
     }
     return fd;
 }
 USED VISIBLE int __wrap_open64(const char *path, int flags, ...) {
-    /* Redirect to our open wrap */
     va_list args;
     va_start(args, flags);
     mode_t mode = va_arg(args, mode_t);
@@ -119,10 +125,7 @@ USED VISIBLE int __wrap__open(const char *path, int flags, ...) {
 extern ssize_t __real_read(int fd, void *buf, size_t count);
 USED VISIBLE ssize_t __wrap_read(int fd, void *buf, size_t count) {
     u64 nread = 0;
-    int res = sysFsRead(fd, buf, (u64)count, &nread);
-
-    // Too noisy for frequent reads, but useful for debugging hangs
-    // _log("read(%d, %p, %u) -> res:%d, nread:%llu\n", fd, buf, count, res, nread);
+    int res = sysLv2FsRead(fd, buf, (u64)count, &nread);
 
     if (res != 0) {
         errno = res;
@@ -145,13 +148,13 @@ USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
         /* Write to log in chunks if too large */
         u64 written = 0;
         if (_log_fd >= 0) {
-             sysFsWrite(_log_fd, buf, (u64)count, &written);
+             sysLv2FsWrite(_log_fd, buf, (u64)count, &written);
         }
         return (ssize_t)count;
     }
 
     u64 nwritten = 0;
-    int res = sysFsWrite(fd, buf, (u64)count, &nwritten);
+    int res = sysLv2FsWrite(fd, buf, (u64)count, &nwritten);
 
     if (res != 0) {
         errno = res;
@@ -171,7 +174,7 @@ USED VISIBLE off_t __wrap_lseek(int fd, off_t offset, int whence) {
     }
 
     u64 pos = 0;
-    int res = sysFsLseek(fd, (s64)offset, whence, &pos);
+    int res = sysLv2FsLSeek64(fd, (s64)offset, whence, &pos);
 
     if (res != 0) {
         errno = res;
@@ -191,7 +194,7 @@ USED VISIBLE int __wrap_close(int fd) {
     if (fd == _log_fd) {
         _log_fd = -1;
     }
-    int res = sysFsClose(fd);
+    int res = sysLv2FsClose(fd);
     _log("close(%d) -> %d\n", fd, res);
     if (res != 0) {
         errno = res;
@@ -213,9 +216,6 @@ static void map_stat(sysFSStat *ps3_st, struct stat *st) {
     st->st_ctime = ps3_st->st_ctime;
     st->st_uid = ps3_st->st_uid;
     st->st_gid = ps3_st->st_gid;
-
-    /* Python often expects S_IFREG for regular files */
-    /* PS3 mode might need conversion depending on toolchain */
 }
 
 USED VISIBLE int __wrap_fstat(int fd, struct stat *buf) {
@@ -227,7 +227,7 @@ USED VISIBLE int __wrap_fstat(int fd, struct stat *buf) {
     }
 
     sysFSStat ps3_st;
-    int res = sysFsFstat(fd, &ps3_st);
+    int res = sysLv2FsFStat(fd, &ps3_st);
     if (res == 0) {
         map_stat(&ps3_st, buf);
         _log("fstat(%d) -> size:%lld\n", fd, (long long)buf->st_size);
@@ -236,9 +236,9 @@ USED VISIBLE int __wrap_fstat(int fd, struct stat *buf) {
 
     /* Fallback using lseek if FStat fails */
     u64 current = 0, end = 0;
-    sysFsLseek(fd, 0, SEEK_CUR, &current);
-    sysFsLseek(fd, 0, SEEK_END, &end);
-    sysFsLseek(fd, (s64)current, SEEK_SET, &current);
+    sysLv2FsLSeek64(fd, 0, SEEK_CUR, &current);
+    sysLv2FsLSeek64(fd, 0, SEEK_END, &end);
+    sysLv2FsLSeek64(fd, (s64)current, SEEK_SET, &current);
 
     memset(buf, 0, sizeof(struct stat));
     buf->st_mode = S_IFREG | 0666;
@@ -251,7 +251,7 @@ USED VISIBLE int __wrap__fstat(int fd, struct stat *buf) { return __wrap_fstat(f
 
 USED VISIBLE int __wrap_stat(const char *path, struct stat *buf) {
     sysFSStat ps3_st;
-    int res = sysFsStat(path, &ps3_st);
+    int res = sysLv2FsStat(path, &ps3_st);
     if (res == 0) {
         map_stat(&ps3_st, buf);
         return 0;
@@ -413,6 +413,9 @@ VISIBLE struct passwd *getpwuid(uid_t uid) { return NULL; }
 VISIBLE struct passwd *getpwnam(const char *name) { return NULL; }
 VISIBLE struct group *getgrgid(gid_t gid) { return NULL; }
 VISIBLE struct group *getgrnam(const char *name) { return NULL; }
+
+/* Python stubs */
+VISIBLE void PyEval_InitThreads() { }
 
 /* SDL_image stubs */
 VISIBLE void* IMG_LoadTexture_RW(void* renderer, void* src, int freesrc) {
