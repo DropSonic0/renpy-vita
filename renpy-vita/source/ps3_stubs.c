@@ -35,7 +35,6 @@ extern void __real_exit(int status);
 extern void __real_abort(void);
 extern void (*__real_signal(int signum, void (*handler)(int)))(int);
 extern int __real_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
-extern int __real_fsync(int fd);
 
 /* Función de log principal */
 VISIBLE void ps3_log(const char *fmt, ...) {
@@ -58,8 +57,6 @@ VISIBLE void ps3_log(const char *fmt, ...) {
 
         if (len > 0) {
             __real_write(_log_fd, buffer, (size_t)len);
-            /* Forzamos el volcado al disco para no perder nada si se cuelga */
-            __real_fsync(_log_fd);
         }
     }
 
@@ -74,7 +71,6 @@ VISIBLE void ps3_log_safe(const char *msg) {
     }
     if (_log_fd >= 0) {
         __real_write(_log_fd, msg, strlen(msg));
-        __real_fsync(_log_fd);
     }
     _in_stub = 0;
 }
@@ -128,7 +124,6 @@ USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
             _in_stub = 1;
             __real_write(_log_fd, fd == 1 ? "STDOUT: " : "STDERR: ", 8);
             __real_write(_log_fd, buf, count);
-            __real_fsync(_log_fd);
             _in_stub = 0;
         }
     }
@@ -250,7 +245,6 @@ USED VISIBLE void __wrap___assert_fail(const char * assertion, const char * file
     __real_exit(1);
 }
 USED VISIBLE void __wrap___assert(const char *file, int line, const char *assertion) { __wrap___assert_fail(assertion, file, line, ""); }
-
 
 USED VISIBLE uid_t __wrap_getuid() { return 0; }
 USED VISIBLE gid_t __wrap_getgid() { return 0; }
