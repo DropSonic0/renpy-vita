@@ -444,10 +444,12 @@ int main(int argc, char* argv[])
 
 #define x(lib) \
     { \
+        printf("Ren'Py PS3: Importing " lib "...\n"); \
         if (PyRun_SimpleString("import " lib) == -1) \
         { \
             show_error_and_exit("Could not import python library " lib ".\n"); \
         } \
+        printf("Ren'Py PS3: Import " lib " done.\n"); \
     }
 
     x("os");
@@ -474,6 +476,7 @@ int main(int argc, char* argv[])
         show_error_and_exit("An uncaught Python exception occurred during renpy.py execution.\n\nPlease look in the \"Ren'Py Logs\" folder on the SD card root for more information about this exception.");
     }
 
+    printf("Ren'Py PS3: Execution finished. Exiting.\n");
     Py_Exit(0);
     return 0;
 }
