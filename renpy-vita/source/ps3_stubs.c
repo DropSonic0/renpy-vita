@@ -19,7 +19,7 @@
 static int _in_stub = 0;
 static int _log_fd = -1;
 
-/* Prototipos de las funciones reales de la libc (proporcionadas por el enlazador gracias a --wrap) */
+/* Declaraciones para las funciones reales de la libc */
 extern int __real_open(const char *path, int flags, ...);
 extern int __real_close(int fd);
 extern ssize_t __real_read(int fd, void *buf, size_t count);
@@ -36,13 +36,16 @@ extern void __real_abort(void);
 extern void (*__real_signal(int signum, void (*handler)(int)))(int);
 extern int __real_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 
-/* Función de log interna que usa la escritura real para evitar recursión infinita */
-void _log(const char *fmt, ...) {
+/* Función de log principal, exportada para main.c */
+VISIBLE void ps3_log(const char *fmt, ...) {
     if (_in_stub) return;
     _in_stub = 1;
 
     if (_log_fd < 0) {
         _log_fd = __real_open("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", O_WRONLY | O_CREAT | O_APPEND, 0666);
+        if (_log_fd >= 0) {
+            __real_write(_log_fd, "\n--- PS3 DEBUG LOG SYSTEM INITIALIZED ---\n", 42);
+        }
     }
 
     if (_log_fd >= 0) {
@@ -54,15 +57,14 @@ void _log(const char *fmt, ...) {
 
         if (len > 0) {
             __real_write(_log_fd, buffer, (size_t)len);
-            /* Nota: No llamamos a fsync aquí para evitar lentitud extrema,
-               pero al usar O_APPEND y __real_write, los datos suelen persistir. */
         }
     }
 
     _in_stub = 0;
 }
 
-void _log_safe(const char *msg) {
+/* Versión segura para manejadores de señales */
+VISIBLE void ps3_log_safe(const char *msg) {
     if (_in_stub) return;
     _in_stub = 1;
     if (_log_fd < 0) {
@@ -78,12 +80,12 @@ void _log_safe(const char *msg) {
 VISIBLE void ps3_crash_handler(int sig) {
     char msg[128];
     snprintf(msg, sizeof(msg), "\n!!! FATAL CRASH: Signal %d !!!\n", sig);
-    _log_safe(msg);
-    _log_safe("Process terminating...\n");
+    ps3_log_safe(msg);
+    ps3_log_safe("Process terminating via real exit...\n");
     __real_exit(sig);
 }
 
-/* --- Wrappers de E/S --- */
+/* --- I/O Wraps --- */
 
 USED VISIBLE int __wrap_open(const char *path, int flags, ...) {
     mode_t mode = 0;
@@ -94,7 +96,11 @@ USED VISIBLE int __wrap_open(const char *path, int flags, ...) {
         va_end(args);
     }
     int fd = __real_open(path, flags, mode);
-    _log("OPEN: \"%s\" (flags: 0x%x) -> fd: %d\n", path, flags, fd);
+    if (fd < 0) {
+        ps3_log("OPEN FAILED: \"%s\" (flags: 0x%x) -> errno: %d\n", path, flags, errno);
+    } else {
+        ps3_log("OPEN SUCCESS: \"%s\" (flags: 0x%x) -> fd: %d\n", path, flags, fd);
+    }
     return fd;
 }
 USED VISIBLE int __wrap_open64(const char *path, int flags, ...) {
@@ -120,8 +126,12 @@ USED VISIBLE ssize_t __wrap__read(int fd, void *buf, size_t count) {
 }
 
 USED VISIBLE ssize_t __wrap_write(int fd, const void *buf, size_t count) {
-    /* Capturamos stdout y stderr y los duplicamos en nuestro log.txt */
+    /* Duplicamos la salida de stdout/stderr al archivo de log */
     if (fd == 1 || fd == 2) {
+        if (_log_fd < 0) {
+             _log_fd = __real_open("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", O_WRONLY | O_CREAT | O_APPEND, 0666);
+        }
+
         if (_log_fd >= 0 && fd != _log_fd) {
             _in_stub = 1;
             __real_write(_log_fd, fd == 1 ? "PY_STDOUT: " : "PY_STDERR: ", 11);
@@ -137,7 +147,6 @@ USED VISIBLE ssize_t __wrap__write(int fd, const void *buf, size_t count) {
 }
 
 USED VISIBLE off_t __wrap_lseek(int fd, off_t offset, int whence) {
-    /* Los streams estándar no permiten lseek */
     if (fd >= 0 && fd <= 2) return 0;
     return __real_lseek(fd, offset, whence);
 }
@@ -170,10 +179,9 @@ USED VISIBLE int __wrap__fstat(int fd, struct stat *buf) { return __wrap_fstat(f
 USED VISIBLE int __wrap_stat(const char *path, struct stat *buf) {
     int res = __real_stat(path, buf);
     if (res != 0) {
-        /* Es normal que Python falle en muchos stat() mientras busca módulos */
-        // _log("STAT FAILED: \"%s\"\n", path);
+        ps3_log("STAT FAILED: \"%s\"\n", path);
     } else {
-        _log("STAT SUCCESS: \"%s\" (size: %lld)\n", path, (long long)buf->st_size);
+        ps3_log("STAT SUCCESS: \"%s\" (size: %lld)\n", path, (long long)buf->st_size);
     }
     return res;
 }
@@ -185,7 +193,7 @@ USED VISIBLE int __wrap_lstat64(const char *path, struct stat *buf) { return __w
 USED VISIBLE int __wrap__lstat(const char *path, struct stat *buf) { return __wrap_stat(path, buf); }
 
 /* --- Wrappers de Directorios --- */
-USED VISIBLE void* __wrap_opendir(const char *name) { _log("OPENDIR: \"%s\"\n", name); return NULL; }
+USED VISIBLE void* __wrap_opendir(const char *name) { ps3_log("OPENDIR: \"%s\"\n", name); return NULL; }
 USED VISIBLE void* __wrap_readdir(void *dirp) { return NULL; }
 USED VISIBLE int __wrap_closedir(void *dirp) { return 0; }
 
@@ -193,21 +201,21 @@ USED VISIBLE int __wrap_closedir(void *dirp) { return 0; }
 static int malloc_count = 0;
 USED VISIBLE void* __wrap_malloc(size_t size) {
     void* ptr = __real_malloc(size);
-    if (++malloc_count % 1000 == 0) _log("MALLOC: %u bytes -> %p (total calls: %d)\n", (unsigned int)size, ptr, malloc_count);
+    if (++malloc_count % 1000 == 0) ps3_log("MALLOC: %u bytes -> %p (calls: %d)\n", (unsigned int)size, ptr, malloc_count);
     return ptr;
 }
 USED VISIBLE void __wrap_free(void* ptr) { __real_free(ptr); }
-USED VISIBLE void* __wrap_realloc(void* ptr, size_t size) { return __real_realloc(ptr, size); }
-USED VISIBLE void* __wrap_calloc(size_t nmemb, size_t size) { return __real_calloc(nmemb, size); }
+USED VISIBLE void __wrap_realloc(void* ptr, size_t size) { return __real_realloc(ptr, size); }
+USED VISIBLE void __wrap_calloc(size_t nmemb, size_t size) { return __real_calloc(nmemb, size); }
 
 USED VISIBLE void* __wrap_sbrk(intptr_t increment) { errno = ENOMEM; return (void*)-1; }
 USED VISIBLE void* __wrap_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) { errno = ENOMEM; return (void*)-1; }
 
 /* --- Wrappers de Sistema --- */
-USED VISIBLE void __wrap_exit(int status) { _log("EXIT: status %d\n", status); __real_exit(status); }
+USED VISIBLE void __wrap_exit(int status) { ps3_log("EXIT: status %d\n", status); __real_exit(status); }
 USED VISIBLE void __wrap__exit(int status) { __wrap_exit(status); }
 USED VISIBLE void __wrap__Exit(int status) { __wrap_exit(status); }
-USED VISIBLE void __wrap_abort(void) { _log("ABORT called\n"); __real_abort(); }
+USED VISIBLE void __wrap_abort(void) { ps3_log("ABORT CALLED\n"); __real_abort(); }
 
 USED VISIBLE int __wrap_gettimeofday(struct timeval *tv, void *tz) {
     if (tv) { tv->tv_sec = time(NULL); tv->tv_usec = 0; }
@@ -215,12 +223,12 @@ USED VISIBLE int __wrap_gettimeofday(struct timeval *tv, void *tz) {
 }
 
 USED VISIBLE int __wrap_isatty(int fd) {
-    /* Forzamos 0 para evitar que Python intente usar un terminal interactivo que no existe */
+    /* Forzamos 0 para evitar que Python intente usar un terminal interactivo */
     return 0;
 }
 
 USED VISIBLE char* __wrap_getenv(const char *name) {
-    _log("GETENV: \"%s\"\n", name);
+    ps3_log("GETENV: \"%s\"\n", name);
     return NULL;
 }
 
@@ -230,17 +238,17 @@ USED VISIBLE char* __wrap_getcwd(char *buf, size_t size) {
 }
 
 USED VISIBLE int __wrap_chdir(const char *path) {
-    _log("CHDIR: \"%s\"\n", path);
+    ps3_log("CHDIR: \"%s\"\n", path);
     return 0;
 }
 
 USED VISIBLE void (*__wrap_signal(int signum, void (*handler)(int)))(int) {
-    _log("SIGNAL: %d (handler: %p)\n", signum, handler);
+    ps3_log("SIGNAL: %d (handler: %p)\n", signum, handler);
     return __real_signal(signum, handler);
 }
 
 USED VISIBLE int __wrap_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact) {
-    _log("SIGACTION: %d\n", signum);
+    ps3_log("SIGACTION: %d\n", signum);
     return __real_sigaction(signum, act, oldact);
 }
 
@@ -251,7 +259,7 @@ USED VISIBLE int __wrap_fcntl(int fd, int cmd, ...) { return 0; }
 USED VISIBLE int __wrap_ioctl(int fd, unsigned long request, ...) { return -1; }
 
 USED VISIBLE void __wrap___assert_fail(const char * assertion, const char * file, unsigned int line, const char * function) {
-    _log("ASSERT FAILED: %s at %s:%u\n", assertion, file, line);
+    ps3_log("ASSERT FAILED: %s at %s:%u\n", assertion, file, line);
     __real_exit(1);
 }
 USED VISIBLE void __wrap___assert(const char *file, int line, const char *assertion) { __wrap___assert_fail(assertion, file, line, ""); }
@@ -272,7 +280,7 @@ USED VISIBLE int __wrap_readlink(const char *path, char *buf, size_t bufsiz) { e
 USED VISIBLE int __wrap_gethostname(char *name, size_t len) { snprintf(name, len, "ps3"); return 0; }
 USED VISIBLE long __wrap_sysconf(int name) { return -1; }
 
-/* Stubs requeridos por Python 2.7 */
+/* Missing POSIX stubs required by the Python build */
 VISIBLE FILE *popen(const char *command, const char *type) { return NULL; }
 VISIBLE int pclose(FILE *stream) { return -1; }
 VISIBLE struct passwd *getpwuid(uid_t uid) { return NULL; }
@@ -280,8 +288,8 @@ VISIBLE struct passwd *getpwnam(const char *name) { return NULL; }
 VISIBLE struct group *getgrgid(gid_t gid) { return NULL; }
 VISIBLE struct group *getgrnam(const char *name) { return NULL; }
 
-/* Stub para PyEval_InitThreads que falta en el build estático de PS3 */
+/* Python internal stub that's missing from some static builds */
 VISIBLE void PyEval_InitThreads() { }
 
-/* Stub para compatibilidad con SDL_image */
+/* SDL_image compatibility stub */
 VISIBLE void* IMG_LoadTexture_RW(void* renderer, void* src, int freesrc) { return NULL; }
