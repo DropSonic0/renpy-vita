@@ -111,7 +111,29 @@ export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
 
 # Added -DIMG_INIT_WEBP=0 as before
 export CFLAGS	:=	-O2 -Wall -D__PS3__ -DIMG_INIT_WEBP=0 -mcpu=cell -mbig-endian $(MACHDEP) $(INCLUDE)
-export LDFLAGS	:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map
+
+# Linker wrapping to redirect standard calls to ps3_stubs.c
+WRAPS := -Wl,--wrap=open -Wl,--wrap=open64 -Wl,--wrap=_open \
+         -Wl,--wrap=read -Wl,--wrap=_read \
+         -Wl,--wrap=write -Wl,--wrap=_write \
+         -Wl,--wrap=lseek -Wl,--wrap=lseek64 -Wl,--wrap=_lseek \
+         -Wl,--wrap=close -Wl,--wrap=_close \
+         -Wl,--wrap=stat -Wl,--wrap=stat64 -Wl,--wrap=_stat \
+         -Wl,--wrap=fstat -Wl,--wrap=fstat64 -Wl,--wrap=_fstat \
+         -Wl,--wrap=lstat -Wl,--wrap=lstat64 -Wl,--wrap=_lstat \
+         -Wl,--wrap=opendir -Wl,--wrap=readdir -Wl,--wrap=closedir \
+         -Wl,--wrap=exit -Wl,--wrap=_exit -Wl,--wrap=_Exit -Wl,--wrap=abort \
+         -Wl,--wrap=gettimeofday \
+         -Wl,--wrap=malloc -Wl,--wrap=free -Wl,--wrap=realloc -Wl,--wrap=calloc \
+         -Wl,--wrap=signal -Wl,--wrap=sigaction -Wl,--wrap=raise -Wl,--wrap=kill \
+         -Wl,--wrap=isatty -Wl,--wrap=getenv -Wl,--wrap=getcwd -Wl,--wrap=chdir \
+         -Wl,--wrap=fflush -Wl,--wrap=fcntl -Wl,--wrap=ioctl -Wl,--wrap=__assert_fail \
+         -Wl,--wrap=setlocale -Wl,--wrap=getuid -Wl,--wrap=getgid -Wl,--wrap=geteuid -Wl,--wrap=getegid \
+         -Wl,--wrap=getpid -Wl,--wrap=getppid -Wl,--wrap=pipe -Wl,--wrap=symlink \
+         -Wl,--wrap=fdatasync -Wl,--wrap=ttyname -Wl,--wrap=execv -Wl,--wrap=readlink \
+         -Wl,--wrap=gethostname -Wl,--wrap=sysconf -Wl,--wrap=__assert
+
+export LDFLAGS	:=	-finline-limit=5000 -Wl,--gc-sections -s -Wl,--strip-all -Wl,--sort-common=descending $(MACHDEP) -Wl,-Map,$(notdir $@).map $(WRAPS)
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 .PHONY: $(BUILD) clean

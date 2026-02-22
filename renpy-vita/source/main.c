@@ -20,9 +20,14 @@ unsigned int sceLibcHeapSize = 10 * 1024 * 1024;
 #include <sys/process.h>
 #include <sys/memory.h>
 #include <sysutil/sysutil.h>
+#include <signal.h>
 
-/* Set process parameters: Priority 1001, 4MB stack size */
-SYS_PROCESS_PARAM(1001, 0x400000);
+/* Set process parameters: Priority 1001, 16MB stack size */
+SYS_PROCESS_PARAM(1001, 0x1000000);
+
+/* External functions from ps3_stubs.c */
+void ps3_crash_handler(int sig);
+void ps3_log(const char *fmt, ...);
 #endif
 
 #define MAX_PATH 256
@@ -115,36 +120,31 @@ SceUID pid = -1;
 #ifdef __PS3__
 typedef int SceUID;
 int pid = -1;
-FILE *ps3_log_fp = NULL;
 #endif
 
 void show_error_and_exit(const char* message)
 {
     Py_Finalize();
-    printf("%s", message);
-#ifdef __PS3__
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "ERROR: %s", message);
-        fflush(ps3_log_fp);
-        fclose(ps3_log_fp);
-    }
-#endif
+    ps3_log("ERROR: %s\n", message);
     Py_Exit(1);
 }
 
 int main(int argc, char* argv[])
 {
 #ifdef __PS3__
-    /* Try to create log file as early as possible */
-    ps3_log_fp = fopen("/dev_hdd0/game/RENPY0001/USRDIR/log.txt", "w");
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: [v16-final-check] Main started\n");
-        fflush(ps3_log_fp);
-    }
-    printf("\n\n****************************************\n");
-    printf("Ren'Py PS3: [BUILD V16-FINAL] STARTING\n");
-    printf("****************************************\n\n");
-    fflush(stdout);
+    /* Disable buffering for stdout and stderr to ensure logs are captured */
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    /* Register crash handlers */
+    signal(SIGSEGV, ps3_crash_handler);
+    signal(SIGILL, ps3_crash_handler);
+    signal(SIGFPE, ps3_crash_handler);
+    signal(SIGBUS, ps3_crash_handler);
+
+    ps3_log("\n\n****************************************\n");
+    ps3_log("Ren'Py PS3: [BUILD V43-DEBUG-CORE] STARTING\n");
+    ps3_log("****************************************\n\n");
 #endif
 
 #ifdef __psp2__
@@ -160,7 +160,7 @@ int main(int argc, char* argv[])
     Py_OptimizeFlag = 0;
     Py_VerboseFlag = 2; /* Enable verbose logging for Python init */
     Py_HashRandomizationFlag = 0; /* Avoid hanging for entropy */
-    Py_InteractiveFlag = 1; /* Ensure we see output */
+    Py_InteractiveFlag = 0; /* Disable interactive terminal probes */
 
 #ifdef __psp2__
     /* Ren'Py is a bit CPU heavy. Increase CPU clocks */
@@ -236,27 +236,12 @@ int main(int argc, char* argv[])
     snprintf(app_dir_path, sizeof(app_dir_path), "/dev_hdd0/game/%s/USRDIR", title_id);
     snprintf(app_program_path, sizeof(app_program_path), "%s/EBOOT.BIN", app_dir_path);
 
-    printf("Ren'Py PS3: App dir path: %s\n", app_dir_path);
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: App dir path: %s\n", app_dir_path);
-        fflush(ps3_log_fp);
-    }
+    ps3_log("Ren'Py PS3: App dir path: %s\n", app_dir_path);
 
     /* Initialize PS3 stuff if needed */
-    printf("Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
-        fflush(ps3_log_fp);
-    }
+    ps3_log("Ren'Py PS3: Calling Py_SetProgramName(%s)...\n", app_program_path);
     Py_SetProgramName(app_program_path);
-    printf("Ren'Py PS3: Py_SetProgramName done.\n");
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Py_SetProgramName done.\n");
-        fflush(ps3_log_fp);
-    }
+    ps3_log("Ren'Py PS3: Py_SetProgramName done.\n");
 #endif
 
     static struct _inittab builtins[] = {
@@ -334,8 +319,7 @@ int main(int argc, char* argv[])
 #ifdef __PS3__
     /* getcwd might not be available or reliable on PS3 */
     memset(relative_dir_path, 0, sizeof(relative_dir_path));
-    printf("Ren'Py PS3: Searching for data files...\n");
-    fflush(stdout);
+    ps3_log("Ren'Py PS3: Searching for data files...\n");
 #else
     getcwd(relative_dir_path, sizeof(relative_dir_path));
 #endif
@@ -364,12 +348,7 @@ int main(int argc, char* argv[])
         {
             continue;
         }
-        printf("Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
-        fflush(stdout);
-        if (ps3_log_fp) {
-            fprintf(ps3_log_fp, "Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
-            fflush(ps3_log_fp);
-        }
+        ps3_log("Ren'Py PS3: Checking path: %s\n", dir_paths[i]);
 
         /* Check for python27.zip in /lib/ or root */
         const char* python_zip_subpaths[] = {"/lib/python27.zip", "/python27.zip"};
@@ -377,20 +356,13 @@ int main(int argc, char* argv[])
             snprintf(sysconfigdata_file_path, sizeof(sysconfigdata_file_path), "%s%s", dir_paths[i], python_zip_subpaths[j]);
             struct stat st;
             if (stat(sysconfigdata_file_path, &st) == 0) {
-                printf("Ren'Py PS3: Found python27.zip at %s (size: %ld bytes)\n", sysconfigdata_file_path, st.st_size);
+                ps3_log("Ren'Py PS3: Found python27.zip at %s (size: %lld bytes)\n", sysconfigdata_file_path, (long long)st.st_size);
                 found_sysconfigdata = 1;
                 strncpy(python_home_buffer, sysconfigdata_file_path, sizeof(python_home_buffer));
                 python_home_buffer[sizeof(python_home_buffer) - 1] = '\0';
-                if (ps3_log_fp) {
-                    fprintf(ps3_log_fp, "Ren'Py PS3: Found python27.zip at %s (size: %ld bytes)\n", sysconfigdata_file_path, st.st_size);
-                    fflush(ps3_log_fp);
-                }
                 break;
             } else {
-                if (ps3_log_fp) {
-                    fprintf(ps3_log_fp, "Ren'Py PS3: python27.zip NOT found at %s\n", sysconfigdata_file_path);
-                    fflush(ps3_log_fp);
-                }
+                ps3_log("Ren'Py PS3: python27.zip NOT found at %s\n", sysconfigdata_file_path);
             }
         }
 
@@ -398,18 +370,11 @@ int main(int argc, char* argv[])
         FILE* renpy_file = fopen((const char*)python_script_buffer, "rb");
         if (renpy_file != NULL)
         {
-            printf("Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
+            ps3_log("Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
             found_renpy = 1;
             fclose(renpy_file);
-            if (ps3_log_fp) {
-                fprintf(ps3_log_fp, "Ren'Py PS3: Found renpy.py at %s\n", python_script_buffer);
-                fflush(ps3_log_fp);
-            }
         } else {
-            if (ps3_log_fp) {
-                fprintf(ps3_log_fp, "Ren'Py PS3: renpy.py NOT found at %s\n", python_script_buffer);
-                fflush(ps3_log_fp);
-            }
+            ps3_log("Ren'Py PS3: renpy.py NOT found at %s\n", python_script_buffer);
         }
 
         if (found_sysconfigdata == 1 && found_renpy == 1)
@@ -421,17 +386,10 @@ int main(int argc, char* argv[])
             /* sys.path will include the zip file and the search directory */
             snprintf(python_snprintf_buffer, sizeof(python_snprintf_buffer), "import sys\nsys.path = ['%s', '%s']", sysconfigdata_file_path, dir_paths[i]);
             
-            printf("Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
-            if (ps3_log_fp) {
-                fprintf(ps3_log_fp, "Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
-                fflush(ps3_log_fp);
-            }
-            printf("Ren'Py PS3: Calling Py_SetPythonHome(%s)...\n", python_home_buffer);
-            fflush(stdout);
-            /* Temporarily use NULL to see if it avoids the hang */
-            Py_SetPythonHome(NULL);
-            printf("Ren'Py PS3: Py_SetPythonHome(NULL) done.\n");
-            fflush(stdout);
+            ps3_log("Ren'Py PS3: Setting Python Home to %s\n", python_home_buffer);
+            ps3_log("Ren'Py PS3: Calling Py_SetPythonHome(%s)...\n", python_home_buffer);
+            Py_SetPythonHome(python_home_buffer);
+            ps3_log("Ren'Py PS3: Py_SetPythonHome done.\n");
             break;
         }
     }
@@ -446,50 +404,27 @@ int main(int argc, char* argv[])
         show_error_and_exit("Could not find renpy.py.\n");
     }
 
-    printf("Ren'Py PS3: Testing malloc...\n");
+    ps3_log("Ren'Py PS3: Testing malloc...\n");
     void* test_mem = malloc(1024 * 1024);
     if (test_mem) {
-        printf("Ren'Py PS3: malloc(1MB) success.\n");
+        ps3_log("Ren'Py PS3: malloc(1MB) success.\n");
         free(test_mem);
     } else {
-        printf("Ren'Py PS3: malloc(1MB) FAILED.\n");
-    }
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: malloc test done.\n");
-        fflush(ps3_log_fp);
+        ps3_log("Ren'Py PS3: malloc(1MB) FAILED.\n");
     }
 
-    printf("Ren'Py PS3: Python Version: %s\n", Py_GetVersion());
-    fflush(stdout);
+    ps3_log("Ren'Py PS3: Python Version: %s\n", Py_GetVersion());
 
-    printf("Ren'Py PS3: Extending Inittab...\n");
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Extending Inittab...\n");
-        fflush(ps3_log_fp);
-    }
+    ps3_log("Ren'Py PS3: Extending Inittab...\n");
     /* Restore Inittab extension */
     PyImport_ExtendInittab(builtins);
+    ps3_log("Ren'Py PS3: PyImport_ExtendInittab done.\n");
 
-    printf("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
-        fflush(ps3_log_fp);
-    }
-    
+    ps3_log("Ren'Py PS3: Initializing Python (Py_InitializeEx(0))... \n");
     /* Use Py_InitializeEx(0) to disable signal handlers */
     Py_InitializeEx(0);
-
-    printf("Ren'Py PS3: Python Initialized!\n");
-    fflush(stdout);
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Python Initialized!\n");
-        fflush(ps3_log_fp);
-    }
-
-    PyObject *pmodule;
+    ps3_log("Ren'Py PS3: Py_InitializeEx(0) returned.\n");
+    ps3_log("Ren'Py PS3: Python Initialized!\n");
 
     char* pyargs[] = {
         python_script_buffer,
@@ -497,11 +432,15 @@ int main(int argc, char* argv[])
         NULL,
     };
 
+    ps3_log("Ren'Py PS3: Calling PySys_SetArgvEx...\n");
     PySys_SetArgvEx(2, pyargs, 1);
+    ps3_log("Ren'Py PS3: PySys_SetArgvEx done.\n");
 
     int python_result;
 
+    ps3_log("Ren'Py PS3: Running path setup script...\n");
     python_result = PyRun_SimpleString(python_snprintf_buffer);
+    ps3_log("Ren'Py PS3: Path setup script finished with result %d\n", python_result);
 
     if (python_result == -1)
     {
@@ -510,10 +449,12 @@ int main(int argc, char* argv[])
 
 #define x(lib) \
     { \
+        ps3_log("Ren'Py PS3: Importing " lib "...\n"); \
         if (PyRun_SimpleString("import " lib) == -1) \
         { \
             show_error_and_exit("Could not import python library " lib ".\n"); \
         } \
+        ps3_log("Ren'Py PS3: Import " lib " done.\n"); \
     }
 
     x("os");
@@ -530,13 +471,9 @@ int main(int argc, char* argv[])
     else
     {
         /* This is where the fun begins */
-        printf("Ren'Py PS3: Running renpy.py...\n");
-        fflush(stdout);
-        if (ps3_log_fp) {
-            fprintf(ps3_log_fp, "Ren'Py PS3: Running renpy.py...\n");
-            fflush(ps3_log_fp);
-        }
+        ps3_log("Ren'Py PS3: Running renpy.py...\n");
         python_result = PyRun_SimpleFileEx(renpy_file, (const char*)python_script_buffer, 1);
+        ps3_log("Ren'Py PS3: renpy.py finished with result %d\n", python_result);
     }
 
     if (python_result == -1)
@@ -544,11 +481,7 @@ int main(int argc, char* argv[])
         show_error_and_exit("An uncaught Python exception occurred during renpy.py execution.\n\nPlease look in the \"Ren'Py Logs\" folder on the SD card root for more information about this exception.");
     }
 
-    if (ps3_log_fp) {
-        fprintf(ps3_log_fp, "Ren'Py PS3: Execution finished with result %d\n", python_result);
-        fflush(ps3_log_fp);
-        fclose(ps3_log_fp);
-    }
+    ps3_log("Ren'Py PS3: Execution finished. Exiting.\n");
     Py_Exit(0);
     return 0;
 }
